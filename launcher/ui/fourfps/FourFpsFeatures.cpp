@@ -140,7 +140,7 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
         { cfg::Events, tr("Próximo evento en el Perfil") },
         { cfg::Gallery, tr("Galería de clips y capturas") },
         { cfg::StreamMode, tr("Modo stream (ocultar IPs, cuenta y datos privados)") },
-        { cfg::SlowPc, tr("Botón \"Modo PC lento\" en las instancias") },
+        { cfg::SlowPc, tr("Botón \"Modo potato\" (rendimiento) en las instancias") },
         { cfg::DiscordRpc, tr("Mostrar \"Jugando en 4fps\" en Discord") },
         { cfg::Lyrics, tr("Letras de canciones (modo música)") },
         { cfg::LyricsOverlay, tr("Letras: ventana flotante sobre el juego") },
@@ -660,6 +660,26 @@ QList<ConflictIssue> scanModConflicts(MinecraftInstance* inst)
         }
     }
 
+    // c) mods pesados en PCs débiles
+    if (enabled(cfg::SlowPc)) {
+        const Hardware hw = detectHardware();
+        if (hw.weak()) {
+            for (const auto& j : jars) {
+                if (j.nested)
+                    continue;
+                const QString r = heavyModReason(j.modId.isEmpty() ? j.topFile : j.modId);
+                if (!r.isEmpty())
+                    issues << ConflictIssue{ QObject::tr("%1 puede no correrte bien").arg(niceMod(j)),
+                                             QObject::tr("%1 %2. Tu PC tiene %3 GB de RAM%4.")
+                                                 .arg(j.modName.isEmpty() ? j.modId : j.modName, r)
+                                                 .arg(QString::number(hw.ramMb / 1024.0, 'f', 0))
+                                                 .arg(hw.gpu.isEmpty() ? QString() : QObject::tr(" y %1").arg(hw.gpu)),
+                                             QObject::tr("Desactívalo o usa el \"Modo potato\" de la instancia, que lo apaga por ti."),
+                                             { j.topFile } };
+            }
+        }
+    }
+
     // a) librerías duplicadas sin relocalizar (mismo paquete en jars de mods distintos)
     struct Owner {
         QString top, jar, id, version;
@@ -853,7 +873,7 @@ CrashExplanation explainCrash(MinecraftInstance* inst, const QDateTime& since)
     if (clean.contains("OutOfMemoryError")) {
         ex.title = QObject::tr("Minecraft se quedó sin memoria RAM");
         ex.cause = QObject::tr("La instancia necesitó más RAM de la que tiene asignada (OutOfMemoryError).");
-        ex.fix = QObject::tr("Sube la RAM de la instancia en Instancias → panel derecho (RAM), o usa \"Modo PC lento\" para quitar mods pesados y bajar la distancia de render.");
+        ex.fix = QObject::tr("Sube la RAM de la instancia en Instancias → panel derecho (RAM), o usa el \"Modo potato\" para quitar mods pesados y bajar la distancia de render.");
     } else if ((m = QRegularExpression("UnsupportedClassVersionError.*?class file version (\\d+)").match(clean)).hasMatch()) {
         const int java = m.captured(1).toInt() - 44;
         ex.title = QObject::tr("Java incorrecto");
@@ -1098,6 +1118,56 @@ QHash<QString, QString> patchOptions(const QString& path, const QHash<QString, Q
 }
 }  // namespace
 
+QString heavyModReason(const QString& in)
+{
+    const QString n = QString(in).toLower().remove(' ').remove('-').remove('_');
+    static const QList<QPair<QStringList, QString>> table = {
+        { { "voxy" }, QObject::tr("dibuja terreno muy lejano: usa mucha RAM, CPU y GPU") },
+        { { "distanthorizons" }, QObject::tr("dibuja terreno muy lejano: usa mucha RAM, CPU y GPU") },
+        { { "iris", "oculus" }, QObject::tr("es para shaders: sin una tarjeta de video dedicada se pone muy lento") },
+        { { "entitymodelfeatures", "entity_model_features", "emf" }, QObject::tr("agrega animaciones y modelos extra que gastan CPU") },
+        { { "freshanimations" }, QObject::tr("agrega animaciones extra que gastan CPU") },
+        { { "lyrica" }, QObject::tr("trae librerías de video grandes (FFmpeg/JavaCV) y gasta RAM") },
+        { { "physicsmod" }, QObject::tr("simula física de bloques y entidades: muy pesado para la CPU") },
+        { { "particlerain" }, QObject::tr("agrega muchas partículas de clima") },
+        { { "bobby" }, QObject::tr("guarda y dibuja chunks extra: más RAM y disco") },
+        { { "c2me" }, QObject::tr("usa muchos hilos de la CPU para generar chunks: en CPUs de 4 núcleos puede dar tirones") },
+    };
+    for (const auto& t : table)
+        for (const auto& k : t.first)
+            if (n.startsWith(k) || (k.size() > 4 && n.contains(k)))
+                return t.second;
+    return {};
+}
+
+bool confirmHeavyMods(QWidget* parent, MinecraftInstance* inst, const QStringList& names)
+{
+    if (!enabled(cfg::SlowPc))
+        return true;
+    const Hardware hw = detectHardware();
+    if (!hw.weak() && !slowModeActive(inst))
+        return true;
+    QStringList lines;
+    for (const auto& n : names) {
+        const QString r = heavyModReason(n);
+        if (!r.isEmpty())
+            lines << QStringLiteral("• <b>%1</b>: %2").arg(n.toHtmlEscaped(), r.toHtmlEscaped());
+    }
+    if (lines.isEmpty())
+        return true;
+    QMessageBox box(parent);
+    box.setWindowTitle(QObject::tr("Mods pesados para tu PC"));
+    box.setTextFormat(Qt::RichText);
+    box.setText(QObject::tr("Tu PC (%1, %2 GB de RAM) puede tener problemas con estos mods:<br><br>%3<br><br>Puede que te vaya lento, con tirones o que crashee. ¿Instalarlos igual?")
+                    .arg(hw.cpu.isEmpty() ? QObject::tr("CPU") : hw.cpu.toHtmlEscaped())
+                    .arg(QString::number(hw.ramMb / 1024.0, 'f', 0))
+                    .arg(lines.join("<br>")));
+    auto* yes = box.addButton(QObject::tr("Instalar igual"), QMessageBox::AcceptRole);
+    box.addButton(QObject::tr("Cancelar"), QMessageBox::RejectRole);
+    box.exec();
+    return box.clickedButton() == yes;
+}
+
 bool slowModeActive(MinecraftInstance* inst)
 {
     return inst && QFile::exists(slowStateFile(inst));
@@ -1132,10 +1202,14 @@ QString enableSlowMode(MinecraftInstance* inst)
         else if (hw.ramMb <= 12500)
             ram = 3584;
     }
+    state["OverrideJavaArgs"] = s->get("OverrideJavaArgs").toBool();
+    state["JvmArgs"] = s->get("JvmArgs").toString();
+    s->set("OverrideJavaArgs", true);
+    s->set("JvmArgs", QStringLiteral("-XX:+UseG1GC -XX:MaxGCPauseMillis=50 -XX:G1HeapRegionSize=16M -XX:+ParallelRefProcEnabled -XX:+DisableExplicitGC"));
     s->set("OverrideMemory", true);
     s->set("MaxMemAlloc", ram);
     s->set("MinMemAlloc", qMin(512, ram));
-    QStringList summary{ QObject::tr("RAM de la instancia: %1 MB").arg(ram) };
+    QStringList summary{ QObject::tr("RAM de la instancia: %1 MB").arg(ram), QObject::tr("Java optimizado (G1GC con pausas cortas)") };
 
     // mods pesados -> .disabled
     QJsonArray disabled;
@@ -1187,7 +1261,11 @@ QString disableSlowMode(MinecraftInstance* inst)
     s->set("OverrideMemory", state.value("OverrideMemory").toBool());
     s->set("MaxMemAlloc", state.value("MaxMemAlloc").toInt());
     s->set("MinMemAlloc", state.value("MinMemAlloc").toInt());
-    QStringList summary{ QObject::tr("RAM restaurada") };
+    if (state.contains("OverrideJavaArgs")) {
+        s->set("OverrideJavaArgs", state.value("OverrideJavaArgs").toBool());
+        s->set("JvmArgs", state.value("JvmArgs").toString());
+    }
+    QStringList summary{ QObject::tr("RAM y Java restaurados"), QObject::tr("Mods de rendimiento de 4fps quitados") };
     for (const auto& d : state.value("disabled").toArray()) {
         const QString p = inst->modsRoot() + "/" + d.toString();
         if (QFile::exists(p + ".disabled") && QFile::rename(p + ".disabled", p))

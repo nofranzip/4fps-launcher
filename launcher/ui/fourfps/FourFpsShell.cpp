@@ -799,20 +799,24 @@ QWidget* FourFpsShell::buildInstancesPage()
     m_pvpHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
     m_pvpHint->setWordWrap(true);
     bv->addWidget(m_pvpHint);
-    m_slowButton = makeButton(tr("Modo PC lento"), QString(), false, m_detailBody);
+    m_slowButton = makeButton(tr("Modo potato"), QString(), false, m_detailBody);
     m_slowButton->setObjectName(QStringLiteral("fpsRowButton"));
     connect(m_slowButton, &QPushButton::clicked, this, [this] {
         auto* inst = m_hooks.selected();
         if (!inst)
             return;
         if (inst->isRunning()) {
-            QMessageBox::information(this, tr("Modo PC lento"), tr("Cierra el juego antes de cambiar el modo."));
+            QMessageBox::information(this, tr("Modo potato"), tr("Cierra el juego antes de cambiar el modo."));
             return;
         }
         const bool on = fps::slowModeActive(inst);
+        if (on)
+            removePotatoMods(inst);
         const QString msg = on ? fps::disableSlowMode(inst) : fps::enableSlowMode(inst);
-        QMessageBox::information(this, on ? tr("Modo normal") : tr("Modo PC lento"),
+        QMessageBox::information(this, on ? tr("Modo normal") : tr("Modo potato"),
                                  (on ? tr("Volví la instancia a como estaba:\n\n") : tr("Listo, la instancia quedó más liviana:\n\n")) + msg);
+        if (!on && pvpSupported(inst))
+            installPotatoMods(inst);
         updateDetail();
     });
     bv->addWidget(m_slowButton);
@@ -965,17 +969,17 @@ void FourFpsShell::updateDetail()
         const bool slow = fps::slowModeActive(sel);
         m_slowButton->setVisible(fps::enabled(fps::cfg::SlowPc));
         m_slowHint->setVisible(fps::enabled(fps::cfg::SlowPc));
-        m_slowButton->setText(slow ? tr("Modo normal (deshacer PC lento)") : tr("Modo PC lento"));
+        m_slowButton->setText(slow ? tr("Volver a modo normal") : tr("Modo potato (rendimiento)"));
         const auto hw = fps::detectHardware();
         QString hwText = QStringLiteral("%1 · %2 GB RAM").arg(hw.cpu.isEmpty() ? tr("CPU") : hw.cpu).arg(QString::number(hw.ramMb / 1024.0, 'f', 0));
         if (!hw.gpu.isEmpty())
             hwText += QStringLiteral(" · ") + hw.gpu;
-        m_slowHint->setText(slow ? tr("Activo: menos RAM, sin mods pesados y video bajo.")
+        m_slowHint->setText(slow ? tr("Modo potato activo: mods de rendimiento, sin mods pesados y video bajo.")
                                  : (hw.weak() ? tr("Recomendado para tu PC (%1 GB RAM).").arg(QString::number(hw.ramMb / 1024.0, 'f', 0)) : QString()));
         m_slowHint->setVisible(fps::enabled(fps::cfg::SlowPc) && !m_slowHint->text().isEmpty());
-        m_slowButton->setToolTip(tip(slow ? tr("Modo normal") : tr("Modo PC lento"),
-                                     (slow ? tr("Deshace el Modo PC lento: vuelve la RAM, reactiva los mods y restaura las opciones de video.")
-                                           : tr("Para PCs débiles: ajusta la RAM, desactiva mods pesados (Voxy, Distant Horizons, Iris/shaders, EMF, Lyrica) y baja la distancia de render. Se deshace con un clic.")) +
+        m_slowButton->setToolTip(tip(slow ? tr("Modo normal") : tr("Modo potato"),
+                                     (slow ? tr("Deshace el Modo potato: vuelve la RAM y Java, reactiva tus mods, quita los mods de rendimiento que puso 4fps y restaura el video.")
+                                           : tr("Para PCs de bajos recursos: ajusta la RAM y Java, desactiva mods pesados (Voxy, Distant Horizons, Iris/shaders, EMF, Lyrica), instala mods de rendimiento (Sodium, Lithium, FerriteCore, EntityCulling, ImmediatelyFast, ModernFix) y baja el video. Se deshace con un clic.")) +
                                          QStringLiteral("\n\n") + tr("Tu PC: %1").arg(hwText)));
     }
     m_pvpHint->setText(supported ? tr("OneConfig de Polyfrost: menú de mods, editor de HUD, hitboxes y crosshair. Se instala solo al jugar.")

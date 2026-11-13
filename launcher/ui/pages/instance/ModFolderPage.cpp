@@ -213,6 +213,14 @@ void ModFolderPage::downloadDialogFinished(int result)
         });
 
         if (m_downloadDialog) {
+            // 4fps: avisar si hay mods pesados para este PC
+            QStringList names;
+            for (auto& task : m_downloadDialog->getTasks())
+                names << task->getName();
+            if (!fps::confirmHeavyMods(this, m_instance, names)) {
+                m_downloadDialog->deleteLater();
+                return;
+            }
             for (auto& task : m_downloadDialog->getTasks()) {
                 tasks.addTask(task);
             }

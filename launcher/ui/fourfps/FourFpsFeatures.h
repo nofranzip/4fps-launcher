@@ -129,6 +129,10 @@ struct Hardware {
 };
 Hardware detectHardware();
 bool slowModeActive(MinecraftInstance* inst);
+// mods que pueden no correr bien en PCs débiles: devuelve el motivo o vacío
+QString heavyModReason(const QString& nameOrFile);
+// antes de instalar: avisa si alguno es pesado para este PC. true = seguir
+bool confirmHeavyMods(QWidget* parent, MinecraftInstance* inst, const QStringList& names);
 QString enableSlowMode(MinecraftInstance* inst);   // devuelve resumen de cambios
 QString disableSlowMode(MinecraftInstance* inst);
 

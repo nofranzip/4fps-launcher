@@ -17,7 +17,7 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Estado de mis servidores en la portada (en línea / pendiente de evento, jugadores, ping, versión, MOTD).
 - Próximo evento en el Perfil, leído de `eventos.json` (edítalo en este repo).
 - Galería de capturas y clips de Flashback.
-- Modo stream, Modo PC lento, Discord Rich Presence y letras de canciones (SMTC + LRCLIB, ventana flotante y página para OBS en `http://127.0.0.1:47323/`).
+- Modo stream, Modo potato (rendimiento: mods de optimización, Java y video para PCs débiles), Discord Rich Presence y letras de canciones (SMTC + LRCLIB, ventana flotante y página para OBS en `http://127.0.0.1:47323/`).
 - Aviso de versión nueva (compara con la última release).
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 

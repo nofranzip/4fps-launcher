@@ -112,6 +112,8 @@ class FourFpsShell : public QWidget {
    public slots:
     void selectionChanged();
     void launchSelected();
+    void installPotatoMods(MinecraftInstance* inst);
+    void removePotatoMods(MinecraftInstance* inst);
     void applyFeatureSettings();
     void updateNowPlaying();
     void watchLaunch(BaseInstance* inst);

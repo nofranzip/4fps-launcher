@@ -5,6 +5,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QHash>
+#include <QRegularExpression>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -60,6 +61,8 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
     QStringList fallback;                 // proyectos a probar si el primero no tiene version
     std::function<bool()> needFallback;
     QString title = QObject::tr("Preparando Cliente PvP 4fps...");
+    bool onlyDownloaded = false;  // guardar solo lo que 4fps descargó (para poder quitarlo después sin tocar mods del usuario)
+    QStringList downloaded;
 
     QString modsDir() const { return inst->modsRoot(); }
 
@@ -76,6 +79,14 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
                                                          { "fabric-language-kotlin", "fabric-language-kotlin" },
                                                          { "hitbox", "polyhitbox" },
                                                          { "crosshair", "polycrosshair" } };
+        // genérico: "ferrite-core" -> archivo "ferritecore-..."
+        if (!project.isEmpty() && project.contains(QRegularExpression("[a-z]")) && project.toLower() == project) {
+            const QString norm = QString(project).remove('-');
+            for (const auto& f : QDir(modsDir()).entryList({ "*.jar" }))
+                if (QString(f).toLower().remove('-').remove('_').startsWith(norm) && !downloaded.contains(f) &&
+                    !inst->settings()->get(filesKey).toStringList().contains(f))
+                    return true;
+        }
         if (prefixes.contains(project)) {
             for (const auto& f : QDir(modsDir()).entryList({ "*.jar" }))
                 if (f.startsWith(prefixes.value(project), Qt::CaseInsensitive) && !inst->settings()->get(filesKey).toStringList().contains(f))
@@ -149,6 +160,7 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
                     out.write(reply->readAll());
                     out.close();
                     self->installed << filename;
+                    self->downloaded << filename;
                 }
             } else {
                 qWarning() << "4fps PvP: fallo la descarga de" << filename << reply->errorString();
@@ -170,7 +182,13 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
         if (!s->contains(filesKey))
             s->registerSetting(filesKey, QStringList());
         QStringList previous = s->get(filesKey).toStringList();
-        if (!installed.isEmpty()) {
+        if (onlyDownloaded) {
+            QStringList keep = previous;
+            for (const auto& d : downloaded)
+                if (!keep.contains(d))
+                    keep << d;
+            s->set(filesKey, keep);
+        } else if (!installed.isEmpty()) {
             for (const auto& old : previous)
                 if (!installed.contains(old))
                     QFile::remove(modsDir() + "/" + old);
@@ -399,4 +417,48 @@ void FourFpsShell::useCapeInGame(const QImage& source, const QString& name)
                                      .arg(name, instName));
     };
     job->next();
+}
+
+// ---------------------------------------------------------------- Modo potato: mods de rendimiento
+void FourFpsShell::installPotatoMods(MinecraftInstance* inst)
+{
+    if (!inst || !pvpSupported(inst))
+        return;
+    auto job = std::make_shared<PvpJob>();
+    job->inst = inst;
+    job->mc = mcVersionOf(inst);
+    job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
+    job->queue = { "sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "modernfix", "fabric-api" };
+    job->filesKey = QStringLiteral("FourFpsPotatoFiles");
+    job->onlyDownloaded = true;
+    job->title = tr("Preparando Modo potato...");
+    job->progress = new QProgressDialog(job->title, QString(), 0, 0, this);
+    job->progress->setWindowTitle(QStringLiteral("4fps"));
+    job->progress->setCancelButton(nullptr);
+    job->progress->setMinimumDuration(300);
+    job->progress->setWindowModality(Qt::WindowModal);
+    QPointer<FourFpsShell> self(this);
+    job->done = [self, job] {
+        if (!self)
+            return;
+        self->m_modsInstance = nullptr;
+        if (!job->downloaded.isEmpty())
+            QMessageBox::information(self, QObject::tr("Modo potato"),
+                                     QObject::tr("Instalé mods de rendimiento:\n\n%1\n\nSe quitan solos al volver al modo normal.").arg(job->downloaded.join('\n')));
+    };
+    job->next();
+}
+
+void FourFpsShell::removePotatoMods(MinecraftInstance* inst)
+{
+    if (!inst)
+        return;
+    auto* s = inst->settings();
+    if (!s->contains("FourFpsPotatoFiles"))
+        s->registerSetting("FourFpsPotatoFiles", QStringList());
+    for (const auto& f : s->get("FourFpsPotatoFiles").toStringList()) {
+        QFile::remove(inst->modsRoot() + "/" + f);
+        QFile::remove(inst->modsRoot() + "/" + f + ".disabled");
+    }
+    s->set("FourFpsPotatoFiles", QStringList());
 }

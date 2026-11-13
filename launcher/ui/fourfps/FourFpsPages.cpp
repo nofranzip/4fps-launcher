@@ -512,7 +512,12 @@ QWidget* FourFpsShell::buildModsPage()
         auto* model = inst->loaderModList();
         auto* dlg = ResourceDownload::ResourceDownloadDialog::createMod(this, model, inst);
         dlg->selectPage(provider);
-        if (dlg->exec()) {
+        QStringList names;
+        const bool accepted = dlg->exec();
+        if (accepted)
+            for (auto& t : dlg->getTasks())
+                names << t->getName();
+        if (accepted && fps::confirmHeavyMods(this, inst, names)) {
             ConcurrentTask tasks(tr("Descargando mods"), APPLICATION->settings()->get("NumberOfConcurrentDownloads").toInt());
             for (auto& t : dlg->getTasks())
                 tasks.addTask(t);
