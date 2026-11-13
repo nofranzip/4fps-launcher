@@ -107,13 +107,13 @@ OutFile "../4fps-Setup.exe"
 ;--------------------------------
 
 ; Version info
-VIProductVersion "1.2.0.0"
-VIFileVersion "1.2.0.0"
+VIProductVersion "1.2.1.0"
+VIFileVersion "1.2.1.0"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductName" "4fps"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "FileDescription" "4fps Installer"
 VIAddVersionKey /LANG=${LANG_ENGLISH} "LegalCopyright" "4fps - basado en Prism Launcher (GPL-3.0)\n© 2022-2026 Prism Launcher Contributors\n© 2021-2022 PolyMC Contributors\n© 2012-2021 MultiMC Contributors"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "1.2.0.0"
-VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "1.2.0.0"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "FileVersion" "1.2.1.0"
+VIAddVersionKey /LANG=${LANG_ENGLISH} "ProductVersion" "1.2.1.0"
 
 ;--------------------------------
 ; Conditional comp with file exist
@@ -418,8 +418,8 @@ Section "4fps"
     WriteRegStr HKCU "${UNINST_KEY}" "QuietUninstallString" '"$INSTDIR\uninstall.exe" /S _?=$INSTDIR'
     WriteRegStr HKCU "${UNINST_KEY}" "InstallLocation" "$INSTDIR"
     WriteRegStr HKCU "${UNINST_KEY}" "Publisher" "4fps Contributors"
-    WriteRegStr HKCU "${UNINST_KEY}" "Version" "1.2.0.0"
-    WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "1.2.0"
+    WriteRegStr HKCU "${UNINST_KEY}" "Version" "1.2.1.0"
+    WriteRegStr HKCU "${UNINST_KEY}" "DisplayVersion" "1.2.1"
     WriteRegStr HKCU "${UNINST_KEY}" "VersionMajor" "12"
     WriteRegStr HKCU "${UNINST_KEY}" "VersionMinor" "0"
     ${GetSize} "$INSTDIR" "/S=0K" $0 $1 $2

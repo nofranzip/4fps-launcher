@@ -81,6 +81,15 @@ void registerSettings()
     reg(cfg::LyricsOverlay, true);
     reg(cfg::LyricsPort, 47323);
     reg(cfg::Accent, QStringLiteral("#ffffff"));
+    // migración: versiones anteriores guardaban Permaquistán como servidor por defecto; se quita una sola vez
+    reg("FourFps_ServersMigrated", false);
+    if (!s->get("FourFps_ServersMigrated").toBool()) {
+        QStringList list = s->get(cfg::LiveServerList).toStringList();
+        list.removeAll(QStringLiteral("Permaquistán|permaquistan.serverprism.online|evento"));
+        list.removeAll(QStringLiteral("Permaquistán|permaquistan.serverprism.online"));
+        s->set(cfg::LiveServerList, list);
+        s->set("FourFps_ServersMigrated", true);
+    }
     reg(cfg::LyricsPosition, QStringLiteral("arriba-izquierda"));
     reg(cfg::LyricsSize, 0);
     reg(cfg::BgImage, QString());

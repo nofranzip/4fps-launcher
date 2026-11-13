@@ -33,7 +33,7 @@ class QComboBox;
 namespace fps {
 
 // versión de 4fps (se compara con la última release de GitHub)
-inline const char* Version = "1.2.0";
+inline const char* Version = "1.2.1";
 
 // ---------------------------------------------------------------- ajustes
 namespace cfg {
