@@ -191,9 +191,15 @@ void FourFpsShell::seedStarterPack()
     for (const auto& d : dirs) {
         for (const auto& fi : QDir(packRoot + "/" + d.first).entryInfoList({ "*.png" }, QDir::Files)) {
             const QString key = d.first + "/" + fi.fileName();
-            if (done.contains(key))
-                continue;
             const QString target = d.second + "/" + fi.fileName();
+            if (done.contains(key)) {
+                // ya copiada antes: si el pack trae una versión nueva, se actualiza (si el usuario la borró, no vuelve)
+                if (QFile::exists(target) && QFileInfo(target).size() != fi.size()) {
+                    QFile::remove(target);
+                    QFile::copy(fi.absoluteFilePath(), target);
+                }
+                continue;
+            }
             if (!QFile::exists(target))
                 QFile::copy(fi.absoluteFilePath(), target);
             done << key;
