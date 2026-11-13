@@ -112,6 +112,8 @@ class FourFpsShell : public QWidget {
    public slots:
     void selectionChanged();
     void launchSelected();
+    void applyFeatureSettings();
+    void updateNowPlaying();
     void watchLaunch(BaseInstance* inst);
     void checkLaunchStuck(BaseInstance* inst, int tries);
     void launchAfterCapes(MinecraftInstance* inst);
@@ -159,7 +161,7 @@ class FourFpsShell : public QWidget {
     void refreshFiles();
     void refreshServers();
     void refreshSkins();
-    QWidget* m_pages[9] = {};
+    QWidget* m_pages[10] = {};
     QWidget* header(const QString& title, const QString& subtitle, const QList<QWidget*>& right);
     void updateDetail();
     void updateBottom();
@@ -268,6 +270,15 @@ class FourFpsShell : public QWidget {
     QLabel* m_bottomName = nullptr;
     QComboBox* m_combo = nullptr;
     QPushButton* m_play = nullptr;
+    QPushButton* m_streamToggle = nullptr;
+    QPushButton* m_musicToggle = nullptr;
+    QLabel* m_music = nullptr;
+    QList<QPushButton*> m_musicControls;
+    QPushButton* m_slowButton = nullptr;
+    QLabel* m_slowHint = nullptr;
+    QWidget* m_galleryPage = nullptr;
+    QPushButton* m_galleryNav = nullptr;
+    QString m_currentServer;
     // estado del juego (Iniciando / Jugando)
     QLabel* m_launchStatus = nullptr;
     QTimer* m_playTimer = nullptr;

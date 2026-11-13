@@ -68,6 +68,8 @@
 #include "tasks/ConcurrentTask.h"
 #include "tasks/Task.h"
 #include "ui/dialogs/ProgressDialog.h"
+#include "ui/fourfps/FourFpsFeatures.h"
+#include "minecraft/MinecraftInstance.h"
 
 ModFolderPage::ModFolderPage(MinecraftInstance* inst, ModFolderModel* model, QWidget* parent)
     : ExternalResourcesPage(inst, model, parent), m_model(model)
@@ -291,9 +293,19 @@ void ModFolderPage::updateMods(bool includeDeps, std::vector<ModPlatform::Indexe
             }
         });
 
-        for (const auto& task : updateDialog.getTasks()) {
-            tasks.addTask(task);
-        }
+        // 4fps: respetar grupos de mods (actualizar juntos / bloqueados)
+        QHash<QString, QString> nameToFile;
+        for (auto* r : m_model->allResources())
+            nameToFile.insert(r->name(), r->fileinfo().fileName());
+        QStringList want, can;
+        for (const auto& n : updateDialog.checkedNames())
+            want << nameToFile.value(n, n);
+        for (auto it = updateDialog.allTasks().begin(); it != updateDialog.allTasks().end(); ++it)
+            can << nameToFile.value(it.key(), it.key());
+        const QStringList finalFiles = fps::applyGroupsToUpdate(this, dynamic_cast<MinecraftInstance*>(m_instance), want, can);
+        for (auto it = updateDialog.allTasks().begin(); it != updateDialog.allTasks().end(); ++it)
+            if (finalFiles.contains(nameToFile.value(it.key(), it.key())))
+                tasks.addTask(it.value());
 
         ProgressDialog loadDialog(this);
         loadDialog.showSkipButton();

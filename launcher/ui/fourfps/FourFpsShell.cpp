@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 
 #include "Application.h"
+#include "FourFpsFeatures.h"
 #include "BaseInstance.h"
 #include "launch/LaunchTask.h"
 #include "InstanceList.h"
@@ -493,6 +494,7 @@ void InstanceCard::mousePressEvent(QMouseEvent* e)
 FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent), m_hooks(std::move(hooks))
 {
     setObjectName(QStringLiteral("fpsRoot"));
+    fps::registerSettings();
     seedStarterPack();
     setAttribute(Qt::WA_StyledBackground, true);
     auto* h = new QHBoxLayout(this);
@@ -515,6 +517,9 @@ FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent
     m_stack->addWidget(buildSkinsPage());      // 6
     m_stack->addWidget(buildRenderPage());     // 7
     m_stack->addWidget(buildProfilePage());    // 8
+    m_galleryPage = fps::buildGalleryPage(this);
+    m_stack->addWidget(m_galleryPage);         // 9
+    rv->addWidget(fps::buildUpdateBanner(right));
     rv->addWidget(m_stack, 1);
     rv->addWidget(buildBottomBar());
     h->addWidget(right, 1);
@@ -532,6 +537,22 @@ FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent
     rebuildInstances();
     rebuildAccounts();
     showPage(1);
+    // ajustes 4fps: modo stream, galería, letras
+    connect(fps::Bus::get(), &fps::Bus::settingsChanged, this, &FourFpsShell::applyFeatureSettings);
+    applyFeatureSettings();
+    fps::DiscordPresence::get()->setIdle();
+    // prueba interna: FOURFPS_TEST=<id de instancia> muestra el detector y el explicador al abrir
+    const QString testId = qEnvironmentVariable("FOURFPS_TEST");
+    if (!testId.isEmpty())
+        QTimer::singleShot(2500, this, [this, testId] {
+            if (auto inst = APPLICATION->instances()->getInstanceById(testId)) {
+                auto* mi = inst;
+                fps::confirmLaunch(this, mi);
+                const auto ex = fps::explainCrash(mi, QDateTime::currentDateTime().addDays(-1));
+                if (ex.found)
+                    fps::showCrashDialog(this, mi, ex);
+            }
+        });
     // medalla de bienvenida y medallas por servers que ya tenías guardados
     QTimer::singleShot(1500, this, [this] {
         grantBadge(QStringLiteral("bienvenida"), tr("¡Bienvenido a 4fps! Ganaste tu primera medalla"));
@@ -602,6 +623,7 @@ QWidget* FourFpsShell::buildSidebar()
     add("server", tr("Servers"), [this] { showPage(5); });
     add("appearance", tr("Skins"), [this] { showPage(6); });
     add("star", tr("Perfil"), [this] { showPage(8); });
+    m_galleryNav = add("screenshots", tr("Galería"), [this] { showPage(9); });
     v->addStretch(1);
     auto* settings = new QPushButton(QIcon::fromTheme("settings"), QStringLiteral("   ") + tr("Ajustes"), side);
     settings->setObjectName(QStringLiteral("navButton"));
@@ -615,7 +637,7 @@ QWidget* FourFpsShell::buildSidebar()
 void FourFpsShell::showPage(int i)
 {
     m_stack->setCurrentIndex(i);
-    const int nav = i == 7 ? 6 : i == 8 ? 7 : i;
+    const int nav = i == 7 ? 6 : i == 8 ? 7 : i == 9 ? 8 : i;
     if (nav >= 0 && nav < m_navButtons.size())
         m_navButtons[nav]->setChecked(true);
     onPageShown(i);
@@ -653,6 +675,7 @@ QWidget* FourFpsShell::buildInstancesPage()
     connect(imp, &QPushButton::clicked, this, [this] { m_hooks.importPack(); });
     connect(nueva, &QPushButton::clicked, this, [this] { m_hooks.newInstance(); });
     v->addWidget(header(tr("Instancias"), tr("Ten varias versiones instaladas y cambia entre ellas con un clic."), { imp, nueva }));
+    v->addWidget(fps::buildLiveServersStrip(page));
 
     auto* filterRow = new QHBoxLayout();
     filterRow->setSpacing(8);
@@ -740,7 +763,28 @@ QWidget* FourFpsShell::buildInstancesPage()
     m_pvpHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
     m_pvpHint->setWordWrap(true);
     bv->addWidget(m_pvpHint);
+    m_slowButton = makeButton(tr("Modo PC lento"), QString(), false, m_detailBody);
+    m_slowButton->setObjectName(QStringLiteral("fpsRowButton"));
+    connect(m_slowButton, &QPushButton::clicked, this, [this] {
+        auto* inst = m_hooks.selected();
+        if (!inst)
+            return;
+        if (inst->isRunning()) {
+            QMessageBox::information(this, tr("Modo PC lento"), tr("Cierra el juego antes de cambiar el modo."));
+            return;
+        }
+        const bool on = fps::slowModeActive(inst);
+        const QString msg = on ? fps::disableSlowMode(inst) : fps::enableSlowMode(inst);
+        QMessageBox::information(this, on ? tr("Modo normal") : tr("Modo PC lento"),
+                                 (on ? tr("Volví la instancia a como estaba:\n\n") : tr("Listo, la instancia quedó más liviana:\n\n")) + msg);
+        updateDetail();
+    });
+    bv->addWidget(m_slowButton);
+    m_slowHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
+    m_slowHint->setWordWrap(true);
+    bv->addWidget(m_slowHint);
     row(tr("Mods de la instancia"), "loadermods", [this] { m_hooks.openPage("mods"); });
+    row(tr("Grupos de mods"), "tag", [this] { fps::editModGroups(this, m_hooks.selected()); });
     row(tr("Abrir carpeta"), "viewfolder", [this] { m_hooks.openFolder(); });
     row(tr("Duplicar"), "copy", [this] { m_hooks.copyInstance(); });
     row(tr("Eliminar"), "delete", [this] { m_hooks.deleteInstance(); });
@@ -881,6 +925,20 @@ void FourFpsShell::updateDetail()
     m_pvpToggle->setChecked(supported && pvpEnabled(sel));
     m_pvpToggle->setEnabled(supported);
     m_pvpToggle->blockSignals(false);
+    if (m_slowButton) {
+        const bool slow = fps::slowModeActive(sel);
+        m_slowButton->setVisible(fps::enabled(fps::cfg::SlowPc));
+        m_slowHint->setVisible(fps::enabled(fps::cfg::SlowPc));
+        m_slowButton->setText(slow ? tr("Modo normal (deshacer PC lento)") : tr("Modo PC lento"));
+        const auto hw = fps::detectHardware();
+        QString hwText = QStringLiteral("%1 · %2 GB RAM").arg(hw.cpu.isEmpty() ? tr("CPU") : hw.cpu).arg(QString::number(hw.ramMb / 1024.0, 'f', 0));
+        if (!hw.gpu.isEmpty())
+            hwText += QStringLiteral(" · ") + hw.gpu;
+        m_slowHint->setText(slow ? tr("Activo: menos RAM, sin mods pesados y video bajo.")
+                                 : (hw.weak() ? tr("Recomendado para tu PC (%1 GB RAM).").arg(QString::number(hw.ramMb / 1024.0, 'f', 0)) : QString()));
+        m_slowHint->setVisible(fps::enabled(fps::cfg::SlowPc) && !m_slowHint->text().isEmpty());
+        m_slowButton->setToolTip(hwText);
+    }
     m_pvpHint->setText(supported ? tr("OneConfig de Polyfrost: menú de mods, editor de HUD, hitboxes y crosshair. Se instala solo al jugar.")
                                  : tr("Disponible en instancias Fabric o Quilt."));
 }
@@ -900,7 +958,41 @@ QWidget* FourFpsShell::buildBottomBar()
     m_bottomName = new QLabel(bar);
     m_bottomName->setObjectName(QStringLiteral("fpsBottomName"));
     h->addWidget(m_bottomName);
+    m_music = new QLabel(bar);
+    m_music->setObjectName(QStringLiteral("fpsNowPlaying"));
+    m_music->setMaximumWidth(340);
+    m_music->setTextFormat(Qt::RichText);
+    m_music->hide();
+    h->addSpacing(16);
+    h->addWidget(m_music);
+    for (const auto& c : { qMakePair(QStringLiteral("◀◀"), QStringLiteral("previous")), qMakePair(QStringLiteral("▶‖"), QStringLiteral("playpause")),
+                           qMakePair(QStringLiteral("▶▶"), QStringLiteral("next")) }) {
+        auto* b = new QPushButton(c.first, bar);
+        b->setObjectName(QStringLiteral("fpsIconButtonFlat"));
+        b->setFixedSize(30, 30);
+        b->setCursor(Qt::PointingHandCursor);
+        b->hide();
+        const QString action = c.second;
+        connect(b, &QPushButton::clicked, this, [action] { fps::LyricsService::get()->control(action); });
+        h->addWidget(b);
+        m_musicControls << b;
+    }
     h->addStretch(1);
+    m_musicToggle = new QPushButton(tr("Música"), bar);
+    m_musicToggle->setObjectName(QStringLiteral("fpsChip"));
+    m_musicToggle->setCheckable(true);
+    m_musicToggle->setCursor(Qt::PointingHandCursor);
+    m_musicToggle->setToolTip(tr("Letras de la canción que suena en tu PC (Spotify, YouTube, etc.), en el launcher y sobre el juego"));
+    connect(m_musicToggle, &QPushButton::toggled, this, [](bool on) { fps::setSetting(fps::cfg::Lyrics, on); });
+    h->addWidget(m_musicToggle);
+    m_streamToggle = new QPushButton(tr("Modo stream"), bar);
+    m_streamToggle->setObjectName(QStringLiteral("fpsChip"));
+    m_streamToggle->setCheckable(true);
+    m_streamToggle->setCursor(Qt::PointingHandCursor);
+    m_streamToggle->setToolTip(tr("Oculta IPs, nombres de servidores privados, tu cuenta y datos de amigos"));
+    connect(m_streamToggle, &QPushButton::toggled, this, [](bool on) { fps::setSetting(fps::cfg::StreamMode, on); });
+    h->addWidget(m_streamToggle);
+    connect(fps::LyricsService::get(), &fps::LyricsService::updated, this, &FourFpsShell::updateNowPlaying);
     m_combo = new QComboBox(bar);
     m_combo->setObjectName(QStringLiteral("fpsCombo"));
     m_combo->setMinimumSize(160, 44);
@@ -1017,12 +1109,30 @@ void FourFpsShell::watchLaunch(BaseInstance* inst)
         if (running) {
             m_starting = false;
             m_playStart = QDateTime::currentDateTime();
+            if (auto* mi = dynamic_cast<MinecraftInstance*>(m_watched.data())) {
+                QString server = m_currentServer.isEmpty() ? QString() : (fps::streamMode() ? tr("En un servidor") : tr("En %1").arg(m_currentServer));
+                fps::DiscordPresence::get()->setPlaying(QStringLiteral("%1 · Minecraft %2").arg(fps::streamSafe(mi->name(), tr("Instancia")), mcVersionOf(mi)), server, m_playStart);
+            }
             setLaunchState(2, QStringLiteral("00:00"));
             m_playTimer->start();
         } else {
             m_playTimer->stop();
+            fps::DiscordPresence::get()->setIdle();
             if (!m_starting)
                 setLaunchState(0, tr("El juego se cerró"));
+            if (fps::enabled(fps::cfg::CrashExplainer)) {
+                if (auto* mi = dynamic_cast<MinecraftInstance*>(m_watched.data())) {
+                    const QDateTime since = m_playStart.isValid() ? m_playStart : QDateTime::currentDateTime().addSecs(-600);
+                    QPointer<MinecraftInstance> guard(mi);
+                    QTimer::singleShot(1200, this, [this, guard, since] {
+                        if (!guard)
+                            return;
+                        const auto ex = fps::explainCrash(guard, since);
+                        if (ex.found)
+                            fps::showCrashDialog(this, guard, ex);
+                    });
+                }
+            }
         }
     });
     // si el inicio se corta antes de crear la tarea (cuenta cancelada, java...), se vuelve al botón normal
@@ -1053,7 +1163,7 @@ void FourFpsShell::updateBottom()
     if (account) {
         m_bottomFace->setPixmap(account->getFace(36, 36));
         const QString type = account->accountType() == AccountType::MSA ? tr("Cuenta Microsoft") : tr("Offline · No premium");
-        m_bottomName->setText(QStringLiteral("<b>%1</b><br><span style='color:#a1a1aa'>%2</span>").arg(account->profileName().toHtmlEscaped(), type));
+        m_bottomName->setText(QStringLiteral("<b>%1</b><br><span style='color:#a1a1aa'>%2</span>").arg(fps::streamSafe(account->profileName(), tr("Jugador")).toHtmlEscaped(), type));
     } else {
         m_bottomFace->setPixmap(QIcon::fromTheme("noaccount").pixmap(36, 36));
         m_bottomName->setText(QStringLiteral("<b>%1</b><br><span style='color:#a1a1aa'>%2</span>").arg(tr("Sin cuenta"), tr("Inicia sesión en Cuenta")));
@@ -1216,7 +1326,7 @@ void FourFpsShell::rebuildAccounts()
         h->addWidget(face);
         auto* t = new QVBoxLayout();
         t->setSpacing(0);
-        t->addWidget(makeLabel(acc->profileName(), QStringLiteral("fpsRowTitle"), row));
+        t->addWidget(makeLabel(fps::streamSafe(acc->profileName(), tr("Cuenta %1").arg(i + 1)), QStringLiteral("fpsRowTitle"), row));
         const bool premium = acc->accountType() == AccountType::MSA;
         t->addWidget(makeLabel(premium ? tr("Microsoft · Premium") : tr("Offline · No premium"), QStringLiteral("fpsMuted"), row));
         h->addLayout(t);
@@ -1245,4 +1355,55 @@ void FourFpsShell::rebuildAccounts()
         m_accountsList->addWidget(row);
     }
     updateBottom();
+}
+
+// ---------------------------------------------------------------- funciones 4fps (ajustes en vivo)
+void FourFpsShell::applyFeatureSettings()
+{
+    if (m_streamToggle) {
+        m_streamToggle->blockSignals(true);
+        m_streamToggle->setChecked(fps::streamMode());
+        m_streamToggle->blockSignals(false);
+    }
+    const bool lyrics = fps::enabled(fps::cfg::Lyrics);
+    if (m_musicToggle) {
+        m_musicToggle->blockSignals(true);
+        m_musicToggle->setChecked(lyrics);
+        m_musicToggle->blockSignals(false);
+    }
+    auto* ls = fps::LyricsService::get();
+    if (lyrics && !ls->running())
+        ls->start();
+    else if (!lyrics && ls->running())
+        ls->stop();
+    if (m_galleryNav)
+        m_galleryNav->setVisible(fps::enabled(fps::cfg::Gallery));
+    rebuildAccounts();
+    updateDetail();
+    updateNowPlaying();
+    if (m_stack)
+        onPageShown(m_stack->currentIndex());
+}
+
+void FourFpsShell::updateNowPlaying()
+{
+    if (!m_music)
+        return;
+    auto* ls = fps::LyricsService::get();
+    for (auto* b : m_musicControls)
+        b->setVisible(ls->running() && !ls->title.isEmpty());
+    if (!ls->running()) {
+        m_music->hide();
+        return;
+    }
+    m_music->show();
+    if (ls->title.isEmpty()) {
+        m_music->setText(QStringLiteral("<span style='color:#a1a1aa'>%1</span>").arg(tr("Música: no suena nada")));
+        return;
+    }
+    const QString head = QStringLiteral("%1 — %2").arg(ls->title, ls->artist);
+    const QString line = ls->playing ? ls->currentLine : tr("En pausa");
+    m_music->setText(QStringLiteral("<b>%1</b><br><span style='color:#a1a1aa'>%2</span>")
+                         .arg(m_music->fontMetrics().elidedText(head, Qt::ElideRight, 320).toHtmlEscaped(),
+                              m_music->fontMetrics().elidedText(line, Qt::ElideRight, 320).toHtmlEscaped()));
 }

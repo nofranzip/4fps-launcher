@@ -525,6 +525,18 @@ void ResourceUpdateDialog::appendResource(const CheckUpdateTask::Update& info, Q
     ui->modTreeWidget->setItemWidget(changelog, 0, changelogArea);
 }
 
+QStringList ResourceUpdateDialog::checkedNames() const
+{
+    QStringList out;
+    if (!ui->modTreeWidget->topLevelItem(0))
+        return out;
+    auto* top = ui->modTreeWidget->topLevelItem(0);
+    for (int i = 0; i < top->childCount(); ++i)
+        if (top->child(i)->checkState(0) == Qt::CheckState::Checked)
+            out << top->child(i)->text(0);
+    return out;
+}
+
 auto ResourceUpdateDialog::getTasks() const -> QList<ResourceDownloadTask::Ptr>
 {
     QList<ResourceDownloadTask::Ptr> list;

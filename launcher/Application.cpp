@@ -66,6 +66,7 @@
 #include "ui/pages/global/LauncherPage.h"
 #include "ui/pages/global/MinecraftPage.h"
 #include "ui/pages/global/ProxyPage.h"
+#include "ui/fourfps/FourFpsFeatures.h"
 
 #include "ui/setupwizard/AutoJavaWizardPage.h"
 #include "ui/setupwizard/JavaWizardPage.h"
@@ -929,6 +930,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
             m_globalSettingsProvider->addPage<APIPage>();
             m_globalSettingsProvider->addPage<ExternalToolsPage>();
             m_globalSettingsProvider->addPage<ProxyPage>();
+            m_globalSettingsProvider->addPage<fps::SettingsPage>();
         }
 
         PixmapCache::setInstance(new PixmapCache(this));

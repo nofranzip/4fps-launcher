@@ -1,5 +1,6 @@
 // 4fps - Cliente PvP: instala OneConfig de Polyfrost + PolyHitbox/PolyCrosshair (y sus dependencias) desde Modrinth antes de jugar
 #include "FourFpsShell.h"
+#include "FourFpsFeatures.h"
 
 #include <QDebug>
 #include <QDir>
@@ -246,6 +247,9 @@ void FourFpsShell::launchSelected()
     auto* inst = m_hooks.selected ? m_hooks.selected() : nullptr;
     if (!inst)
         return;
+    if (!inst->isRunning() && !fps::confirmLaunch(this, inst))
+        return;
+    m_currentServer.clear();
     if (!inst->isRunning())
         watchLaunch(inst);
     if (!pvpSupported(inst) || inst->isRunning()) {

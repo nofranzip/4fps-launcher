@@ -814,6 +814,9 @@ SET(LAUNCHER_SOURCES
     ui/fourfps/FourFpsPvp.cpp
     ui/fourfps/FourFpsWardrobe.cpp
     ui/fourfps/FourFpsProfile.cpp
+    ui/fourfps/FourFpsFeatures.h
+    ui/fourfps/FourFpsFeatures.cpp
+    ui/fourfps/FourFpsFeatures2.cpp
     ui/fourfps/SkinRender.h
     ui/fourfps/SkinRender.cpp
     ui/InstanceWindow.h

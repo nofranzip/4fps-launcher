@@ -29,6 +29,9 @@ class ResourceUpdateDialog final : public ReviewMessageBox {
     void appendResource(const CheckUpdateTask::Update& info, QStringList requiredBy = {});
 
     QList<ResourceDownloadTask::Ptr> getTasks() const;
+    // 4fps: nombres marcados y todas las actualizaciones encontradas (para los grupos de mods)
+    QStringList checkedNames() const;
+    const QHash<QString, ResourceDownloadTask::Ptr>& allTasks() const { return m_tasks; }
     auto indexDir() const -> QDir { return m_resourceModel->indexDir(); }
 
     auto noUpdates() const -> bool { return m_noUpdates; };

@@ -1,5 +1,6 @@
 // 4fps - Perfil tipo Discord, medallas (por server o por código) y notificaciones (campanita)
 #include "FourFpsShell.h"
+#include "FourFpsFeatures.h"
 
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -450,7 +451,7 @@ void FourFpsShell::refreshProfile()
     QWidget* host = m_profileLayout->parentWidget();
     const QJsonObject o = loadProfile();
     auto account = APPLICATION->accounts()->defaultAccount();
-    const QString user = account ? account->profileName() : tr("Sin cuenta");
+    const QString user = account ? fps::streamSafe(account->profileName(), tr("Jugador")) : tr("Sin cuenta");
     const QString display = o.value("displayName").toString().isEmpty() ? user : o.value("displayName").toString();
     QImage skin;
     if (account && account->accountType() == AccountType::MSA)
@@ -567,6 +568,7 @@ void FourFpsShell::refreshProfile()
     // ---- medallas y canje
     auto* side = new QVBoxLayout();
     side->setSpacing(18);
+    side->addWidget(fps::buildEventCard(host));
     auto* medals = makeCard(host);
     auto* mv = new QVBoxLayout(medals);
     mv->setContentsMargins(18, 18, 18, 18);

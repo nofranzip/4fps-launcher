@@ -184,8 +184,8 @@ set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CAC
 set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for legacy (<=1.5.2) FML Libraries.")
 
 ######## Set version numbers ########
-set(Launcher_VERSION_MAJOR 12)
-set(Launcher_VERSION_MINOR 0)
+set(Launcher_VERSION_MAJOR 1)
+set(Launcher_VERSION_MINOR 1)
 set(Launcher_VERSION_PATCH 0)
 
 set(Launcher_VERSION_NAME "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}.${Launcher_VERSION_PATCH}")
@@ -289,6 +289,7 @@ set(Launcher_COMPILER_TARGET_PROCESSOR ${CMAKE_SYSTEM_PROCESSOR})
 include(GetGitRevisionDescription)
 git_get_exact_tag(Launcher_GIT_TAG)
 get_git_head_revision(Launcher_GIT_REFSPEC Launcher_GIT_COMMIT)
+set(Launcher_GIT_REFSPEC "refs/heads/stable")  # 4fps: versión limpia (sin nombre de rama)
 
 message(STATUS "Git commit: ${Launcher_GIT_COMMIT}")
 message(STATUS "Git tag: ${Launcher_GIT_TAG}")

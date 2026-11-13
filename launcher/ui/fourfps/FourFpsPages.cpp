@@ -1,5 +1,6 @@
 // 4fps - pantallas Versiones, Mods, Archivos, Servers, Skins y Render
 #include "FourFpsShell.h"
+#include "FourFpsFeatures.h"
 #include <QRegularExpression>
 #include <QPointer>
 #include <QDnsLookup>
@@ -180,6 +181,10 @@ void FourFpsShell::onPageShown(int i)
             break;
         case 8:
             refreshProfile();
+            break;
+        case 9:
+            if (m_galleryPage)
+                fps::refreshGalleryPage(m_galleryPage);
             break;
         default:
             break;
@@ -538,6 +543,17 @@ QWidget* FourFpsShell::buildModsPage()
     fr->addWidget(modrinth);
     fr->addWidget(curse);
     fr->addWidget(m_modsInstalledChip);
+    auto* groupsBtn = chip(tr("Grupos"), page);
+    groupsBtn->setCheckable(false);
+    groupsBtn->setToolTip(tr("Grupos de mods que se actualizan juntos (ej: Renderizado: Sodium, Iris, Voxy...)"));
+    connect(groupsBtn, &QPushButton::clicked, this, [this] {
+        if (!fps::enabled(fps::cfg::ModGroups)) {
+            QMessageBox::information(this, tr("Grupos de mods"), tr("Los grupos están apagados. Actívalos en Ajustes → Funciones 4fps."));
+            return;
+        }
+        fps::editModGroups(this, m_modsInstance ? m_modsInstance : m_hooks.selected());
+    });
+    fr->addWidget(groupsBtn);
     v->addLayout(fr);
 
     QWidget* host;
@@ -877,26 +893,6 @@ struct ServerEntry {
     QByteArray icon;  // PNG que guarda el juego en servers.dat (base64)
 };
 
-// ---- ping de servidor (Server List Ping): logo, jugadores y version
-QByteArray mcVarInt(int v)
-{
-    QByteArray out;
-    quint32 u = static_cast<quint32>(v);
-    do {
-        quint8 b = u & 0x7f;
-        u >>= 7;
-        if (u)
-            b |= 0x80;
-        out.append(char(b));
-    } while (u);
-    return out;
-}
-
-QByteArray mcPacket(const QByteArray& body)
-{
-    return mcVarInt(body.size()) + body;
-}
-
 QString serverIconCache(const QString& host)
 {
     const QString d = APPLICATION->dataRoot() + "/server-icons";
@@ -906,108 +902,6 @@ QString serverIconCache(const QString& host)
     return d + "/" + safe + ".png";
 }
 
-struct PingResult {
-    QPixmap icon;
-    QString players;
-};
-
-// conecta, pide el estado y llama a done(result) una sola vez
-void pingServer(QObject* ctx, const QString& address, std::function<void(PingResult)> done)
-{
-    QString host = address.trimmed();
-    int port = 25565;
-    bool explicitPort = false;
-    if (!host.startsWith('[') && host.count(':') == 1) {
-        port = host.section(':', 1).toInt();
-        host = host.section(':', 0, 0);
-        explicitPort = true;
-    }
-    auto finished = std::make_shared<bool>(false);
-    auto finish = [finished, done](PingResult r) {
-        if (*finished)
-            return;
-        *finished = true;
-        done(r);
-    };
-    auto connectTo = [ctx, finish, address](const QString& target, int targetPort, const QString& handshakeHost) {
-        auto* sock = new QTcpSocket(ctx);
-        auto buf = std::make_shared<QByteArray>();
-        QTimer::singleShot(6000, sock, [sock, finish] {
-            finish({});
-            sock->deleteLater();
-        });
-        QObject::connect(sock, &QTcpSocket::connected, sock, [sock, handshakeHost, targetPort] {
-            QByteArray hs;
-            hs += mcVarInt(0x00);
-            hs += mcVarInt(-1);  // version de protocolo desconocida: el server igual responde el estado
-            const QByteArray h = handshakeHost.toUtf8();
-            hs += mcVarInt(h.size()) + h;
-            hs += char((targetPort >> 8) & 0xff);
-            hs += char(targetPort & 0xff);
-            hs += mcVarInt(1);
-            sock->write(mcPacket(hs) + mcPacket(mcVarInt(0x00)));
-        });
-        QObject::connect(sock, &QTcpSocket::readyRead, sock, [sock, buf, finish] {
-            buf->append(sock->readAll());
-            // longitud total, id, largo del json, json
-            auto readVar = [&](int& pos, bool& ok) {
-                quint32 val = 0;
-                for (int i = 0; i < 5; i++) {
-                    if (pos >= buf->size()) {
-                        ok = false;
-                        return 0;
-                    }
-                    const quint8 b = quint8(buf->at(pos++));
-                    val |= quint32(b & 0x7f) << (7 * i);
-                    if (!(b & 0x80))
-                        return int(val);
-                }
-                ok = false;
-                return 0;
-            };
-            int pos = 0;
-            bool ok = true;
-            const int len = readVar(pos, ok);
-            if (!ok || buf->size() < pos + len)
-                return;  // falta data
-            readVar(pos, ok);
-            const int jlen = readVar(pos, ok);
-            if (!ok || buf->size() < pos + jlen)
-                return;
-            const auto obj = QJsonDocument::fromJson(buf->mid(pos, jlen)).object();
-            PingResult r;
-            QString fav = obj.value("favicon").toString();
-            const int comma = fav.indexOf(',');
-            if (comma > 0)
-                r.icon.loadFromData(QByteArray::fromBase64(fav.mid(comma + 1).toLatin1()), "PNG");
-            const auto pl = obj.value("players").toObject();
-            if (!pl.isEmpty())
-                r.players = QStringLiteral("%1/%2").arg(pl.value("online").toInt()).arg(pl.value("max").toInt());
-            finish(r);
-            sock->deleteLater();
-        });
-        QObject::connect(sock, &QTcpSocket::errorOccurred, sock, [sock, finish](QAbstractSocket::SocketError) {
-            finish({});
-            sock->deleteLater();
-        });
-        sock->connectToHost(target, targetPort);
-    };
-    if (explicitPort) {
-        connectTo(host, port, host);
-        return;
-    }
-    // registro SRV (_minecraft._tcp) como hace el juego
-    auto* dns = new QDnsLookup(QDnsLookup::SRV, "_minecraft._tcp." + host, ctx);
-    QObject::connect(dns, &QDnsLookup::finished, dns, [dns, connectTo, host] {
-        const auto recs = dns->serviceRecords();
-        if (dns->error() == QDnsLookup::NoError && !recs.isEmpty())
-            connectTo(recs.first().target(), recs.first().port(), host);
-        else
-            connectTo(host, 25565, host);
-        dns->deleteLater();
-    });
-    dns->lookup();
-}
 
 QList<ServerEntry> readServers(const QString& file)
 {
@@ -1146,6 +1040,9 @@ QWidget* FourFpsShell::buildServersPage()
         if (ip.isEmpty() || !inst)
             return;
         awardForServer(ip);
+        if (inst->isRunning() || !fps::confirmLaunch(this, inst))
+            return;
+        m_currentServer = ip;
         watchLaunch(inst);
         APPLICATION->launch(inst, LaunchMode::Normal, std::make_shared<MinecraftTarget>(MinecraftTarget::parse(ip, false)));
     });
@@ -1203,18 +1100,18 @@ void FourFpsShell::refreshServers()
         h->addWidget(icon);
         auto* t = new QVBoxLayout();
         t->setSpacing(1);
-        t->addWidget(makeLabel(s.name, QStringLiteral("fpsRowTitle"), row));
+        t->addWidget(makeLabel(fps::streamSafe(s.name, tr("Servidor")), QStringLiteral("fpsRowTitle"), row));
         auto* meta = makeLabel(QStringLiteral("%1 · %2").arg(loaderOf(sel), mcVersionOf(sel)), QStringLiteral("fpsMuted"), row);
         t->addWidget(meta);
-        t->addWidget(makeLabel(s.ip, QStringLiteral("fpsHint"), row));
+        t->addWidget(makeLabel(fps::streamSafe(s.ip), QStringLiteral("fpsHint"), row));
         {
             QPointer<QLabel> pIcon(icon), pMeta(meta);
             const QString base = meta->text();
             const bool hadLogo = !logo.isNull();
-            pingServer(row, s.ip, [pIcon, pMeta, base, cache, hadLogo](PingResult r) {
+            fps::pingServer(row, s.ip, [pIcon, pMeta, base, cache, hadLogo](fps::PingResult r) {
                 if (pMeta)
-                    pMeta->setText(r.players.isEmpty() ? base + QStringLiteral(" · ") + QObject::tr("sin respuesta")
-                                                       : base + QStringLiteral(" · ") + QObject::tr("%1 en línea").arg(r.players));
+                    pMeta->setText(r.playersText().isEmpty() ? base + QStringLiteral(" · ") + QObject::tr("sin respuesta")
+                                                       : base + QStringLiteral(" · ") + QObject::tr("%1 en línea").arg(r.playersText()));
                 if (!r.icon.isNull()) {
                     r.icon.save(cache, "PNG");
                     if (pIcon && !hadLogo)
@@ -1227,6 +1124,9 @@ void FourFpsShell::refreshServers()
         const QString ip = s.ip;
         connect(join, &QPushButton::clicked, this, [this, sel, ip] {
             awardForServer(ip);
+            if (sel->isRunning() || !fps::confirmLaunch(this, sel))
+                return;
+            m_currentServer = ip;
             watchLaunch(sel);
             APPLICATION->launch(sel, LaunchMode::Normal, std::make_shared<MinecraftTarget>(MinecraftTarget::parse(ip, false)));
         });
