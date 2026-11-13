@@ -10,6 +10,7 @@
 #include <QPointer>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QWidget>
 #include <functional>
 
@@ -27,6 +28,7 @@ class QCheckBox;
 class QPlainTextEdit;
 class QLineEdit;
 class QSpinBox;
+class QComboBox;
 
 namespace fps {
 
@@ -52,6 +54,10 @@ inline const char* LyricsOffset = "FourFps_LyricsOffset";
 inline const char* LyricsOverlay = "FourFps_LyricsOverlay";
 inline const char* LyricsPort = "FourFps_LyricsPort";
 inline const char* Accent = "FourFps_Accent";
+inline const char* LyricsPosition = "FourFps_LyricsPosition";
+inline const char* LyricsSize = "FourFps_LyricsSize";
+inline const char* BgImage = "FourFps_BgImage";
+inline const char* BgDim = "FourFps_BgDim";
 }  // namespace cfg
 
 void registerSettings();
@@ -89,6 +95,8 @@ class SettingsPage : public QWidget, public BasePage {
     QLineEdit* m_discordId = nullptr;
     QLineEdit* m_eventsUrl = nullptr;
     QSpinBox* m_offset = nullptr;
+    QComboBox* m_lyricsPos = nullptr;
+    QComboBox* m_lyricsSize = nullptr;
 };
 
 // ---------------------------------------------------------------- ping de servidores (Server List Ping)
@@ -189,12 +197,13 @@ class LyricsService : public QObject {
     QString title, artist, album, status, currentLine, nextLine;
     QImage cover;
     double positionMs = 0, durationMs = 0;
-    bool synced = false, playing = false;
+    bool synced = false, playing = false, searching = false;
 
    private:
     explicit LyricsService(QObject* parent = nullptr);
     void onHelperLine(const QByteArray& line);
     void fetchLyrics();
+    void tryLyrics(QList<QUrl> tries, const QString& key, const QString& cacheFile);
     void tick();
     QByteArray stateJson() const;
     void handleHttp(QTcpSocket* s);
@@ -221,6 +230,8 @@ QWidget* buildEventCard(QWidget* parent);
 // color de la interfaz (botones, selección, bordes). El fondo sigue negro.
 void applyAccent(const QColor& preview = QColor());
 void openAccentPicker(QWidget* parent);
+// panel central con imagen de fondo opcional (el menú y la barra de abajo no cambian)
+QWidget* buildBackgroundHost(QWidget* parent, QWidget* content);
 // aviso de versión nueva (consulta la última release de GitHub)
 QWidget* buildUpdateBanner(QWidget* parent);
 void editModGroups(QWidget* parent, MinecraftInstance* inst);

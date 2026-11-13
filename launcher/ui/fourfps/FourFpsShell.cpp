@@ -529,7 +529,7 @@ FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent
     m_galleryPage = fps::buildGalleryPage(this);
     m_stack->addWidget(m_galleryPage);         // 9
     rv->addWidget(fps::buildUpdateBanner(right));
-    rv->addWidget(m_stack, 1);
+    rv->addWidget(fps::buildBackgroundHost(right, m_stack), 1);
     rv->addWidget(buildBottomBar());
     h->addWidget(right, 1);
 
@@ -630,7 +630,7 @@ QWidget* FourFpsShell::buildSidebar()
         colorBtn->setIcon(QIcon(pm));
     }
     colorBtn->setStyleSheet(m_bell->styleSheet());
-    colorBtn->setToolTip(tip(tr("Color del launcher"), tr("Elige el color de los botones con un círculo cromático (rosa, azul, verde...). El fondo sigue negro.")));
+    colorBtn->setToolTip(tip(tr("Color y fondo"), tr("Elige el color de los botones con un círculo cromático (rosa, azul, verde...) y pon una imagen de fondo en la parte central.")));
     connect(colorBtn, &QToolButton::clicked, this, [this] { fps::openAccentPicker(this); });
     logoRow->setSpacing(0);
     logoRow->addWidget(colorBtn, 0, Qt::AlignVCenter);
@@ -1054,7 +1054,7 @@ QWidget* FourFpsShell::buildBottomBar()
     m_musicToggle->setObjectName(QStringLiteral("fpsChip"));
     m_musicToggle->setCheckable(true);
     m_musicToggle->setCursor(Qt::PointingHandCursor);
-    m_musicToggle->setToolTip(tip(tr("Modo música"), tr("Detecta la canción que suena en tu PC (Spotify, YouTube en el navegador, etc.) y muestra la letra sincronizada aquí abajo y en una ventanita sobre el juego. Para OBS usa la fuente de navegador http://127.0.0.1:47323/. Clic para prender o apagar.")));
+    m_musicToggle->setToolTip(tip(tr("Modo música"), tr("Muestra la canción que suena en tu PC (Spotify, YouTube en el navegador, etc.) arriba a la izquierda sobre el juego y aquí abajo. Si encuentra la letra, la agrega. Clic para prender o apagar.")));
     connect(m_musicToggle, &QPushButton::toggled, this, [](bool on) { fps::setSetting(fps::cfg::Lyrics, on); });
     h->addWidget(m_musicToggle);
     m_streamToggle = new QPushButton(tr("Modo stream"), bar);

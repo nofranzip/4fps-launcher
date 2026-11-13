@@ -8,7 +8,9 @@
 #include <QSlider>
 #include <QMouseEvent>
 #include <cmath>
+#include <QFileDialog>
 #include <QApplication>
+#include <QDebug>
 #include <QBuffer>
 #include <QButtonGroup>
 #include <QClipboard>
@@ -253,49 +255,109 @@ QList<QPair<double, QString>> parseLrc(const QString& lrc)
     return out;
 }
 
-// ventana flotante con la letra (no recibe clics)
+// ventana flotante "Escuchando ahora" (no recibe clics): portada, canción y artista; la letra debajo si se encontró.
+// Posición configurable; por defecto arriba a la izquierda, en chico.
 class LyricsOverlay : public QWidget {
    public:
     LyricsOverlay() : QWidget(nullptr, Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowTransparentForInput)
     {
         setAttribute(Qt::WA_TranslucentBackground);
         setAttribute(Qt::WA_ShowWithoutActivating);
-        resize(900, 110);
+        place();
+    }
+    QString title, artist, line;
+    QImage cover;
+
+    void place()
+    {
+        const QString pos = setting(cfg::LyricsPosition).toString();
+        const int scale = setting(cfg::LyricsSize).toInt();  // 0 chico, 1 mediano, 2 grande
+        m_base = scale == 2 ? 20 : scale == 1 ? 16 : 13;
+        resize(m_base * 30, m_base * 5 + 20);
+        m_left = pos.endsWith("izquierda");
+        m_right = pos.endsWith("derecha");
         if (auto* sc = QGuiApplication::primaryScreen()) {
-            const QRect g = sc->availableGeometry();
-            move(g.center().x() - width() / 2, g.bottom() - height() - 90);
+            const QRect g = sc->geometry();
+            const int x = m_left ? g.left() + 12 : m_right ? g.right() - width() - 12 : g.center().x() - width() / 2;
+            const int y = pos.startsWith("abajo") ? g.bottom() - height() - 110 : g.top() + 10;
+            move(x, y);
         }
     }
-    QString line, next;
-    double fade = 1.0;
 
    protected:
     void paintEvent(QPaintEvent*) override
     {
-        if (line.isEmpty())
+        if (title.isEmpty())
             return;
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
-        QFont f = font();
-        f.setPixelSize(30);
-        f.setBold(true);
-        p.setFont(f);
-        const int w = qMin(width() - 20, p.fontMetrics().horizontalAdvance(line) + 40);
-        QRectF bg((width() - w) / 2.0, 6, w, 48);
+        p.setRenderHint(QPainter::SmoothPixmapTransform);
+        QFont ft = font();
+        ft.setPixelSize(m_base);
+        ft.setBold(true);
+        QFont fa = font();
+        fa.setPixelSize(qMax(10, m_base - 3));
+        QFont fl = font();
+        fl.setPixelSize(qMax(10, m_base - 2));
+        fl.setItalic(true);
+        const int rows = line.isEmpty() ? 2 : 3;
+        const int coverSize = m_base * rows + (rows - 1) * 2;
+        const int pad = m_base / 2 + 2;
+        const QString t = QStringLiteral("♪ ") + title;
+        const int textW = qMax(QFontMetrics(ft).horizontalAdvance(t), qMax(QFontMetrics(fa).horizontalAdvance(artist), QFontMetrics(fl).horizontalAdvance(line)));
+        const int w = qMin(width() - 4, (cover.isNull() ? 0 : coverSize + pad) + textW + pad * 2);
+        const int h = coverSize + pad * 2;
+        const double x = m_left ? 0 : m_right ? width() - w : (width() - w) / 2.0;
+        QRectF card(x, 2, w, h);
         QPainterPath path;
-        path.addRoundedRect(bg, 12, 12);
-        p.fillPath(path, QColor(10, 10, 12, int(170 * fade)));
-        p.setPen(QColor(255, 255, 255, int(255 * fade)));
-        p.drawText(bg, Qt::AlignCenter, line);
-        if (!next.isEmpty()) {
-            f.setPixelSize(17);
-            f.setBold(false);
-            p.setFont(f);
-            p.setPen(QColor(200, 200, 205, int(190 * fade)));
-            p.drawText(QRectF(0, 60, width(), 30), Qt::AlignCenter, next);
+        path.addRoundedRect(card, 10, 10);
+        p.fillPath(path, QColor(10, 10, 12, 175));
+        double tx = card.left() + pad;
+        if (!cover.isNull()) {
+            QPainterPath cp;
+            const QRectF cr(tx, card.top() + pad, coverSize, coverSize);
+            cp.addRoundedRect(cr, 6, 6);
+            p.save();
+            p.setClipPath(cp);
+            p.drawImage(cr, cover);
+            p.restore();
+            tx += coverSize + pad;
+        }
+        const double tw = card.right() - pad - tx;
+        p.setFont(ft);
+        p.setPen(Qt::white);
+        const int lineH = coverSize / rows;
+        p.drawText(QRectF(tx, card.top() + pad, tw, lineH), Qt::AlignLeft | Qt::AlignVCenter, p.fontMetrics().elidedText(t, Qt::ElideRight, int(tw)));
+        p.setFont(fa);
+        p.setPen(QColor(200, 200, 205));
+        p.drawText(QRectF(tx, card.top() + pad + lineH, tw, lineH), Qt::AlignLeft | Qt::AlignVCenter, p.fontMetrics().elidedText(artist, Qt::ElideRight, int(tw)));
+        if (!line.isEmpty()) {
+            p.setFont(fl);
+            p.setPen(QColor(235, 235, 240));
+            p.drawText(QRectF(tx, card.top() + pad + lineH * 2, tw, lineH), Qt::AlignLeft | Qt::AlignVCenter, p.fontMetrics().elidedText(line, Qt::ElideRight, int(tw)));
         }
     }
+
+   private:
+    int m_base = 13;
+    bool m_left = true, m_right = false;
 };
+
+// limpia títulos de YouTube/navegador: "Artista - Canción (Official Video) [4K]" -> artista, canción
+void cleanTrack(QString& title, QString& artist)
+{
+    static const QRegularExpression junk(
+        "\\s*[\\(\\[][^\\)\\]]*(official|oficial|video|v[ií]deo|lyric|letra|audio|visuali[sz]er|remaster|\\bhd\\b|\\b4k\\b|\\bmv\\b|clip|music)[^\\)\\]]*[\\)\\]]",
+        QRegularExpression::CaseInsensitiveOption);
+    title.remove(junk);
+    title.remove(QRegularExpression("\\s*\\|.*$"));
+    title.remove(QRegularExpression("\\s+(ft\\.?|feat\\.?|featuring)\\s+.*$", QRegularExpression::CaseInsensitiveOption));
+    artist.remove(QRegularExpression("\\s*-\\s*Topic$", QRegularExpression::CaseInsensitiveOption));
+    artist.remove(QRegularExpression("VEVO$", QRegularExpression::CaseInsensitiveOption));
+    artist.remove(QRegularExpression("\\s*(,|&| x | ft\\.? | feat\\.? ).*$", QRegularExpression::CaseInsensitiveOption));
+    title = title.simplified();
+    artist = artist.simplified();
+}
 }  // namespace
 
 LyricsService* LyricsService::get()
@@ -371,6 +433,10 @@ void LyricsService::start()
         auto* ov = new LyricsOverlay();
         m_overlay = ov;
         ov->show();
+        connect(Bus::get(), &Bus::settingsChanged, ov, [ov] {
+            ov->place();
+            ov->update();
+        });
     }
     m_tick->start();
     emit updated();
@@ -462,61 +528,107 @@ void LyricsService::fetchLyrics()
         const auto o = QJsonDocument::fromJson(cf.readAll()).object();
         m_lines = parseLrc(o.value("syncedLyrics").toString());
         synced = !m_lines.isEmpty();
+        if (synced) {  // solo se usan cachés con letra (las vacías de versiones viejas se ignoran)
+            emit updated();
+            return;
+        }
+    }
+    // intentos: datos exactos, título limpio, título "Artista - Canción" partido, y búsqueda libre
+    QString ct = title, ca = artist;
+    cleanTrack(ct, ca);
+    QList<QUrl> tries;
+    auto addGet = [&tries, this](const QString& t, const QString& a) {
+        if (t.isEmpty() || a.isEmpty())
+            return;
+        QUrl u("https://lrclib.net/api/get");
+        QUrlQuery q;
+        q.addQueryItem("track_name", t);
+        q.addQueryItem("artist_name", a);
+        if (durationMs > 0)
+            q.addQueryItem("duration", QString::number(qRound(durationMs / 1000)));
+        u.setQuery(q);
+        tries << u;
+    };
+    auto addSearch = [&tries](const QString& t, const QString& a) {
+        if (t.isEmpty())
+            return;
+        QUrl u("https://lrclib.net/api/search");
+        QUrlQuery q;
+        if (a.isEmpty()) {
+            q.addQueryItem("q", t);
+        } else {
+            q.addQueryItem("track_name", t);
+            q.addQueryItem("artist_name", a);
+        }
+        u.setQuery(q);
+        tries << u;
+    };
+    addGet(title, artist);
+    addGet(ct, ca);
+    addSearch(ct, ca);
+    if (ct.contains(" - ")) {  // YouTube: "Artista - Canción"
+        QString t2 = ct.section(" - ", 1).trimmed(), a2 = ct.section(" - ", 0, 0).trimmed();
+        cleanTrack(t2, a2);
+        addGet(t2, a2);
+        addSearch(t2, a2);
+        addSearch(t2 + ' ' + a2, QString());
+    }
+    addSearch(ct + ' ' + ca, QString());
+    addSearch(ct, QString());
+    searching = true;
+    tryLyrics(tries, m_trackKey, cacheFile);
+}
+
+void LyricsService::tryLyrics(QList<QUrl> tries, const QString& key, const QString& cacheFile)
+{
+    if (key != m_trackKey)
+        return;
+    if (tries.isEmpty()) {
+        m_lines.clear();
+        synced = false;
+        searching = false;
         emit updated();
         return;
     }
-    QUrl url("https://lrclib.net/api/get");
-    QUrlQuery q;
-    q.addQueryItem("track_name", title);
-    q.addQueryItem("artist_name", artist);
-    if (!album.isEmpty())
-        q.addQueryItem("album_name", album);
-    if (durationMs > 0)
-        q.addQueryItem("duration", QString::number(qRound(durationMs / 1000)));
-    url.setQuery(q);
+    const QUrl url = tries.takeFirst();
     QNetworkRequest req(url);
     req.setHeader(QNetworkRequest::UserAgentHeader, "4fps-launcher (https://github.com/nofranzip/4fps-launcher)");
-    const QString key = m_trackKey;
+    req.setTransferTimeout(10000);
     auto* reply = APPLICATION->network()->get(req);
-    connect(reply, &QNetworkReply::finished, this, [this, reply, key, cacheFile] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, key, cacheFile, tries] {
         reply->deleteLater();
         if (key != m_trackKey)
             return;
-        QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
-        if (o.value("syncedLyrics").toString().isEmpty()) {
-            // segundo intento: búsqueda sin álbum/duración
-            QUrl s("https://lrclib.net/api/search");
-            QUrlQuery q;
-            q.addQueryItem("track_name", title);
-            q.addQueryItem("artist_name", artist);
-            s.setQuery(q);
-            QNetworkRequest req(s);
-            req.setHeader(QNetworkRequest::UserAgentHeader, "4fps-launcher (https://github.com/nofranzip/4fps-launcher)");
-            auto* r2 = APPLICATION->network()->get(req);
-            connect(r2, &QNetworkReply::finished, this, [this, r2, key, cacheFile] {
-                r2->deleteLater();
-                if (key != m_trackKey)
-                    return;
-                QJsonObject best;
-                for (const auto& v : QJsonDocument::fromJson(r2->readAll()).array())
-                    if (!v.toObject().value("syncedLyrics").toString().isEmpty()) {
-                        best = v.toObject();
-                        break;
-                    }
-                QFile f(cacheFile);
-                if (f.open(QIODevice::WriteOnly))
-                    f.write(QJsonDocument(QJsonObject{ { "syncedLyrics", best.value("syncedLyrics") } }).toJson());
-                m_lines = parseLrc(best.value("syncedLyrics").toString());
-                synced = !m_lines.isEmpty();
-                emit updated();
-            });
+        const auto doc = QJsonDocument::fromJson(reply->readAll());
+        QString lrc;
+        if (doc.isObject()) {
+            lrc = doc.object().value("syncedLyrics").toString();
+        } else if (doc.isArray()) {
+            // la que tenga letra sincronizada y la duración más parecida
+            double best = 1e18;
+            for (const auto& v : doc.array()) {
+                const auto o = v.toObject();
+                const QString l = o.value("syncedLyrics").toString();
+                if (l.isEmpty())
+                    continue;
+                const double diff = durationMs > 0 ? std::abs(o.value("duration").toDouble() * 1000 - durationMs) : 0;
+                if (diff < best && (durationMs <= 0 || diff < 15000)) {
+                    best = diff;
+                    lrc = l;
+                }
+            }
+        }
+        if (lrc.isEmpty()) {
+            qDebug() << "4fps letras: sin resultado en" << reply->url().toString();
+            tryLyrics(tries, key, cacheFile);
             return;
         }
         QFile f(cacheFile);
         if (f.open(QIODevice::WriteOnly))
-            f.write(QJsonDocument(QJsonObject{ { "syncedLyrics", o.value("syncedLyrics") } }).toJson());
-        m_lines = parseLrc(o.value("syncedLyrics").toString());
+            f.write(QJsonDocument(QJsonObject{ { "syncedLyrics", lrc } }).toJson());
+        m_lines = parseLrc(lrc);
         synced = !m_lines.isEmpty();
+        searching = false;
         emit updated();
     });
 }
@@ -538,7 +650,7 @@ void LyricsService::tick()
     const double t = positionMs + setting(cfg::LyricsOffset).toInt();
     QString cur, nxt;
     if (m_lines.isEmpty()) {
-        cur = QObject::tr("Sin letra sincronizada");
+        cur = searching ? QObject::tr("Buscando letra...") : QObject::tr("Sin letra sincronizada");
     } else {
         int idx = -1;
         for (int i = 0; i < m_lines.size(); i++)
@@ -551,9 +663,17 @@ void LyricsService::tick()
     currentLine = cur;
     nextLine = nxt;
     if (auto* ov = static_cast<LyricsOverlay*>(m_overlay)) {
-        ov->line = playing ? cur : QString();
-        ov->next = nxt;
-        ov->update();
+        QString dt = title, da = artist;
+        cleanTrack(dt, da);  // sin "(Official Video)", "- Topic", etc.
+        const QString newTitle = playing ? dt : QString();
+        const QString newLine = playing && synced ? cur : QString();
+        if (ov->title != newTitle || ov->line != newLine || ov->artist != da || ov->cover.cacheKey() != cover.cacheKey()) {
+            ov->title = newTitle;
+            ov->artist = da;
+            ov->line = newLine;
+            ov->cover = cover;
+            ov->update();
+        }
     }
     // enviar al juego (clientes que dijeron HELLO)
     const QByteArray js = stateJson() + '\n';
@@ -1134,8 +1254,14 @@ void applyAccent(const QColor& preview)
     if (base.isEmpty())
         return;
     const QColor a = preview.isValid() ? preview : QColor(setting(cfg::Accent).toString());
+    // con imagen de fondo, la parte central se vuelve transparente (las tarjetas siguen sólidas)
+    const QString bgRules = setting(cfg::BgImage).toString().isEmpty()
+                                ? QString()
+                                : QStringLiteral("\nQStackedWidget#fpsStack, QStackedWidget#fpsStack QWidget#fpsPage, QStackedWidget#fpsStack QWidget#fpsGridHost,"
+                                                 " QStackedWidget#fpsStack QScrollArea, QStackedWidget#fpsStack QScrollArea > QWidget > QWidget"
+                                                 " { background: transparent; }\n");
     if (!a.isValid() || a == QColor(Qt::white)) {
-        qApp->setStyleSheet(base);
+        qApp->setStyleSheet(base + bgRules);
         return;
     }
     // texto sobre el color: negro si el color es claro, blanco si es oscuro
@@ -1150,14 +1276,14 @@ void applyAccent(const QColor& preview)
     q.replace(QRegularExpression("(border-color:\\s*)#e4e4e7", QRegularExpression::CaseInsensitiveOption), "\\1" + hover);
     q.replace(QRegularExpression("(background(?:-color)?:\\s*)#d4d4d8", QRegularExpression::CaseInsensitiveOption), "\\1" + press);
     q.replace(QRegularExpression("((?<![\\w-])color:\\s*|selection-color:\\s*)#0d0d0e", QRegularExpression::CaseInsensitiveOption), "\\1" + on);
-    qApp->setStyleSheet(q);
+    qApp->setStyleSheet(q + bgRules);
 }
 
 void openAccentPicker(QWidget* parent)
 {
     const QColor original(setting(cfg::Accent).toString());
     QDialog dlg(parent);
-    dlg.setWindowTitle(QObject::tr("Color del launcher"));
+    dlg.setWindowTitle(QObject::tr("Color y fondo del launcher"));
     auto* v = new QVBoxLayout(&dlg);
     v->setSpacing(12);
     auto* intro = new QLabel(QObject::tr("Elige el color de los botones, la selección y los bordes. El fondo sigue negro."), &dlg);
@@ -1203,6 +1329,55 @@ void openAccentPicker(QWidget* parent)
     side->addStretch();
     row->addLayout(side);
     v->addLayout(row);
+    // imagen de fondo de la parte central
+    auto* bgBox = new QFrame(&dlg);
+    auto* bgv = new QVBoxLayout(bgBox);
+    bgv->setContentsMargins(0, 8, 0, 0);
+    bgv->addWidget(new QLabel(QObject::tr("<b>Imagen de fondo</b> (solo la parte central; el menú y la barra de abajo no cambian)"), bgBox));
+    auto* bgRow = new QHBoxLayout();
+    auto* bgName = new QLabel(bgBox);
+    auto* bgPick = new QPushButton(QObject::tr("Elegir imagen..."), bgBox);
+    auto* bgClear = new QPushButton(QObject::tr("Quitar"), bgBox);
+    bgRow->addWidget(bgName, 1);
+    bgRow->addWidget(bgPick);
+    bgRow->addWidget(bgClear);
+    bgv->addLayout(bgRow);
+    auto* dimRow = new QHBoxLayout();
+    dimRow->addWidget(new QLabel(QObject::tr("Oscurecer"), bgBox));
+    auto* dim = new QSlider(Qt::Horizontal, bgBox);
+    dim->setRange(0, 90);
+    dim->setValue(setting(cfg::BgDim).toInt());
+    dimRow->addWidget(dim, 1);
+    bgv->addLayout(dimRow);
+    v->addWidget(bgBox);
+    const QString oldBg = setting(cfg::BgImage).toString();
+    const int oldDim = setting(cfg::BgDim).toInt();
+    auto bgPath = std::make_shared<QString>(oldBg);
+    auto refreshBgName = [bgName, bgPath, bgClear] {
+        bgName->setText(bgPath->isEmpty() ? QObject::tr("Sin imagen") : QObject::tr("Imagen elegida"));
+        bgClear->setEnabled(!bgPath->isEmpty());
+    };
+    refreshBgName();
+    QObject::connect(bgPick, &QPushButton::clicked, &dlg, [&dlg, bgPath, refreshBgName] {
+        const QString f = QFileDialog::getOpenFileName(&dlg, QObject::tr("Imagen de fondo"), QStandardPaths::writableLocation(QStandardPaths::PicturesLocation),
+                                                       QObject::tr("Imágenes (*.png *.jpg *.jpeg *.webp *.bmp *.gif)"));
+        QImage img(f);
+        if (img.isNull())
+            return;
+        const QString target = APPLICATION->dataRoot() + "/fondo-launcher.png";
+        img.scaled(QSize(2560, 1440), Qt::KeepAspectRatio, Qt::SmoothTransformation).save(target, "PNG");
+        *bgPath = target;
+        setSetting(cfg::BgImage, QString());  // fuerza recarga
+        setSetting(cfg::BgImage, target);      // vista previa en vivo
+        refreshBgName();
+    });
+    QObject::connect(bgClear, &QPushButton::clicked, &dlg, [bgPath, refreshBgName] {
+        bgPath->clear();
+        setSetting(cfg::BgImage, QString());
+        refreshBgName();
+    });
+    QObject::connect(dim, &QSlider::valueChanged, &dlg, [](int val) { setSetting(cfg::BgDim, val); });
+
     auto* bb = new QDialogButtonBox(&dlg);
     auto* reset = bb->addButton(QObject::tr("Volver al blanco"), QDialogButtonBox::ResetRole);
     bb->addButton(QObject::tr("Guardar"), QDialogButtonBox::AcceptRole);
@@ -1252,8 +1427,66 @@ void openAccentPicker(QWidget* parent)
         setSetting(cfg::Accent, current->name());
         applyAccent();
     } else {
-        applyAccent();  // vuelve al color guardado
+        // cancelar: vuelve el color y el fondo de antes
+        setSetting(cfg::BgImage, oldBg);
+        setSetting(cfg::BgDim, oldDim);
+        applyAccent();
     }
+}
+
+// ================================================================= fondo de la parte central
+namespace {
+class BackgroundHost : public QWidget {
+   public:
+    QPixmap image;
+    QString loaded;
+    bool initialized = false;
+    QPixmap scaled;
+    QSize scaledFor;
+    void reload()
+    {
+        const QString path = setting(cfg::BgImage).toString();
+        if (path != loaded || !initialized) {
+            const bool changedPresence = !initialized || path.isEmpty() != loaded.isEmpty();
+            initialized = true;
+            loaded = path;
+            image = path.isEmpty() ? QPixmap() : QPixmap(path);
+            scaled = QPixmap();
+            if (changedPresence)
+                applyAccent();  // activa/desactiva la transparencia de las páginas
+        }
+        update();
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter p(this);
+        p.fillRect(rect(), QColor("#0d0d0e"));
+        if (image.isNull())
+            return;
+        if (scaled.isNull() || scaledFor != size()) {
+            scaled = image.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+            scaledFor = size();
+        }
+        p.drawPixmap((width() - scaled.width()) / 2, (height() - scaled.height()) / 2, scaled);
+        const int dim = qBound(0, setting(cfg::BgDim).toInt(), 90);
+        p.fillRect(rect(), QColor(13, 13, 14, dim * 255 / 100));
+    }
+};
+}  // namespace
+
+QWidget* buildBackgroundHost(QWidget* parent, QWidget* content)
+{
+    auto* host = new BackgroundHost();
+    host->setParent(parent);
+    host->setObjectName(QStringLiteral("fpsBgHost"));
+    auto* l = new QVBoxLayout(host);
+    l->setContentsMargins(0, 0, 0, 0);
+    l->addWidget(content);
+    QObject::connect(Bus::get(), &Bus::settingsChanged, host, [host] { host->reload(); });
+    QTimer::singleShot(0, host, [host] { host->reload(); });
+    return host;
 }
 
 }  // namespace fps

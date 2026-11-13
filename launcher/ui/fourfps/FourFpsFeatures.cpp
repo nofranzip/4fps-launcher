@@ -5,6 +5,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QClipboard>
 #include <QDesktopServices>
 #include <QDialog>
@@ -80,6 +81,10 @@ void registerSettings()
     reg(cfg::LyricsOverlay, true);
     reg(cfg::LyricsPort, 47323);
     reg(cfg::Accent, QStringLiteral("#ffffff"));
+    reg(cfg::LyricsPosition, QStringLiteral("arriba-izquierda"));
+    reg(cfg::LyricsSize, 0);
+    reg(cfg::BgImage, QString());
+    reg(cfg::BgDim, 55);
 }
 
 QVariant setting(const char* key)
@@ -143,8 +148,8 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
         { cfg::StreamMode, tr("Modo stream (ocultar IPs, cuenta y datos privados)") },
         { cfg::SlowPc, tr("Botón \"Modo potato\" (rendimiento) en las instancias") },
         { cfg::DiscordRpc, tr("Mostrar \"Jugando en 4fps\" en Discord") },
-        { cfg::Lyrics, tr("Letras de canciones (modo música)") },
-        { cfg::LyricsOverlay, tr("Letras: ventana flotante sobre el juego") },
+        { cfg::Lyrics, tr("Modo música (canción que suena y letra si existe)") },
+        { cfg::LyricsOverlay, tr("Música: mostrar la canción sobre el juego") },
     };
     for (const auto& it : items) {
         auto* c = new QCheckBox(it.second, g1);
@@ -156,10 +161,10 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
 
     auto* gc = new QGroupBox(tr("Color del launcher"), host);
     auto* gcv = new QHBoxLayout(gc);
-    auto* colorHint = new QLabel(tr("Cambia el color de los botones, la selección y los bordes. El fondo sigue negro."), gc);
+    auto* colorHint = new QLabel(tr("Cambia el color de los botones y pon una imagen de fondo en la parte central. El menú y la barra de abajo no cambian."), gc);
     colorHint->setWordWrap(true);
     gcv->addWidget(colorHint, 1);
-    auto* pick = new QPushButton(tr("Elegir color..."), gc);
+    auto* pick = new QPushButton(tr("Color y fondo..."), gc);
     connect(pick, &QPushButton::clicked, this, [this] { openAccentPicker(this); });
     gcv->addWidget(pick);
     v->addWidget(gc);
@@ -188,6 +193,18 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
     m_offset->setSuffix(QStringLiteral(" ms"));
     m_offset->setValue(setting(cfg::LyricsOffset).toInt());
     form->addRow(tr("Desfase de las letras"), m_offset);
+    m_lyricsPos = new QComboBox(g3);
+    const QList<QPair<QString, QString>> positions = { { "arriba-izquierda", tr("Arriba a la izquierda") }, { "arriba-centro", tr("Arriba al centro") },
+                                                       { "arriba-derecha", tr("Arriba a la derecha") },   { "abajo-centro", tr("Abajo al centro") },
+                                                       { "abajo-izquierda", tr("Abajo a la izquierda") } };
+    for (const auto& p : positions)
+        m_lyricsPos->addItem(p.second, p.first);
+    m_lyricsPos->setCurrentIndex(qMax(0, m_lyricsPos->findData(setting(cfg::LyricsPosition).toString())));
+    form->addRow(tr("Posición de la música"), m_lyricsPos);
+    m_lyricsSize = new QComboBox(g3);
+    m_lyricsSize->addItems({ tr("Chica"), tr("Mediana"), tr("Grande") });
+    m_lyricsSize->setCurrentIndex(qBound(0, setting(cfg::LyricsSize).toInt(), 2));
+    form->addRow(tr("Tamaño de la música"), m_lyricsSize);
     v->addWidget(g3);
     v->addStretch();
 }
@@ -205,6 +222,8 @@ bool SettingsPage::apply()
     s->set(cfg::DiscordAppId, m_discordId->text().trimmed());
     s->set(cfg::EventsUrl, m_eventsUrl->text().trimmed());
     s->set(cfg::LyricsOffset, m_offset->value());
+    s->set(cfg::LyricsPosition, m_lyricsPos->currentData().toString());
+    s->set(cfg::LyricsSize, m_lyricsSize->currentIndex());
     emit Bus::get()->settingsChanged();
     return true;
 }
