@@ -24,6 +24,7 @@
 #include <QScrollArea>
 #include <QStackedWidget>
 #include <QStyle>
+#include <QConicalGradient>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -549,6 +550,7 @@ FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent
     connect(fps::Bus::get(), &fps::Bus::settingsChanged, this, &FourFpsShell::applyFeatureSettings);
     applyFeatureSettings();
     fps::DiscordPresence::get()->setIdle();
+    QTimer::singleShot(0, this, [] { fps::applyAccent(); });
     // prueba interna: FOURFPS_TEST=<id de instancia> muestra el detector y el explicador al abrir
     const QString testId = qEnvironmentVariable("FOURFPS_TEST");
     if (!testId.isEmpty())
@@ -600,11 +602,38 @@ QWidget* FourFpsShell::buildSidebar()
     m_bell->setObjectName(QStringLiteral("fpsBell"));
     m_bell->setAutoRaise(true);
     m_bell->setIconSize(QSize(28, 28));
-    m_bell->setFixedSize(36, 36);
+    m_bell->setFixedSize(30, 36);
     m_bell->setCursor(Qt::PointingHandCursor);
     m_bell->setStyleSheet(QStringLiteral("QToolButton#fpsBell{border:none;border-radius:8px;background:transparent;}"
                                          "QToolButton#fpsBell:hover{background:#26262b;}"));
     connect(m_bell, &QToolButton::clicked, this, &FourFpsShell::showNotifications);
+    // botón de color: un círculo cromático chico
+    auto* colorBtn = new QToolButton(side);
+    colorBtn->setObjectName(QStringLiteral("fpsBell"));
+    colorBtn->setAutoRaise(true);
+    colorBtn->setFixedSize(30, 36);
+    colorBtn->setIconSize(QSize(18, 18));
+    colorBtn->setCursor(Qt::PointingHandCursor);
+    {
+        QPixmap pm(40, 40);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        QConicalGradient g(20, 20, 0);
+        for (int i = 0; i <= 6; i++)
+            g.setColorAt(i / 6.0, QColor::fromHsv((i * 60) % 360, 230, 255));
+        p.setBrush(g);
+        p.setPen(Qt::NoPen);
+        p.drawEllipse(QRectF(3, 3, 34, 34));
+        p.setBrush(QColor("#141416"));
+        p.drawEllipse(QRectF(13, 13, 14, 14));
+        colorBtn->setIcon(QIcon(pm));
+    }
+    colorBtn->setStyleSheet(m_bell->styleSheet());
+    colorBtn->setToolTip(tip(tr("Color del launcher"), tr("Elige el color de los botones con un círculo cromático (rosa, azul, verde...). El fondo sigue negro.")));
+    connect(colorBtn, &QToolButton::clicked, this, [this] { fps::openAccentPicker(this); });
+    logoRow->setSpacing(0);
+    logoRow->addWidget(colorBtn, 0, Qt::AlignVCenter);
     logoRow->addWidget(m_bell, 0, Qt::AlignVCenter);
     v->addLayout(logoRow);
 

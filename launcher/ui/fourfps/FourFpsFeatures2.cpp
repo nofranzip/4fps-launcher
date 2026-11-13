@@ -2,6 +2,12 @@
 #include "FourFpsFeatures.h"
 #include "FourFpsShell.h"
 
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLineEdit>
+#include <QSlider>
+#include <QMouseEvent>
+#include <cmath>
 #include <QApplication>
 #include <QBuffer>
 #include <QButtonGroup>
@@ -1017,6 +1023,237 @@ QWidget* buildUpdateBanner(QWidget* parent)
     QObject::connect(timer, &QTimer::timeout, bar, check);
     timer->start();
     return bar;
+}
+
+// ================================================================= color de la interfaz
+namespace {
+QString& baseStyle()
+{
+    static QString base;
+    return base;
+}
+
+// círculo cromático: ángulo = tono, distancia al centro = saturación
+class ColorWheel : public QWidget {
+   public:
+    std::function<void(const QColor&)> changed;
+    int value = 255;
+    QColor color = Qt::white;
+    explicit ColorWheel(QWidget* parent) : QWidget(parent)
+    {
+        setFixedSize(240, 240);
+        setCursor(Qt::CrossCursor);
+    }
+    void setColor(const QColor& c)
+    {
+        color = c;
+        value = qMax(40, c.value());
+        m_cache = QImage();
+        update();
+    }
+    void setValue(int v)
+    {
+        value = v;
+        m_cache = QImage();
+        int h, s, vv;
+        color.getHsv(&h, &s, &vv);
+        color = QColor::fromHsv(qMax(0, h), s, value);
+        update();
+        if (changed)
+            changed(color);
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        const int d = qMin(width(), height());
+        if (m_cache.isNull()) {
+            m_cache = QImage(d, d, QImage::Format_ARGB32_Premultiplied);
+            m_cache.fill(Qt::transparent);
+            const double r = d / 2.0;
+            for (int y = 0; y < d; y++)
+                for (int x = 0; x < d; x++) {
+                    const double dx = x - r + 0.5, dy = y - r + 0.5;
+                    const double dist = std::sqrt(dx * dx + dy * dy);
+                    if (dist > r)
+                        continue;
+                    double ang = std::atan2(-dy, dx) * 180.0 / M_PI;
+                    if (ang < 0)
+                        ang += 360;
+                    QColor c = QColor::fromHsv(int(ang) % 360, int(qMin(1.0, dist / r) * 255), value);
+                    if (dist > r - 1)
+                        c.setAlpha(int((r - dist) * 255));
+                    m_cache.setPixelColor(x, y, c);
+                }
+        }
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.drawImage(0, 0, m_cache);
+        // marcador
+        int h, s, v;
+        color.getHsv(&h, &s, &v);
+        const double r = d / 2.0;
+        const double ang = (h < 0 ? 0 : h) * M_PI / 180.0;
+        const QPointF pt(r + std::cos(ang) * s / 255.0 * r, r - std::sin(ang) * s / 255.0 * r);
+        p.setPen(QPen(Qt::black, 3));
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(pt, 8, 8);
+        p.setPen(QPen(Qt::white, 2));
+        p.drawEllipse(pt, 8, 8);
+    }
+    void mousePressEvent(QMouseEvent* e) override { pick(e->position()); }
+    void mouseMoveEvent(QMouseEvent* e) override
+    {
+        if (e->buttons() & Qt::LeftButton)
+            pick(e->position());
+    }
+
+   private:
+    QImage m_cache;
+    void pick(const QPointF& pos)
+    {
+        const double r = qMin(width(), height()) / 2.0;
+        const double dx = pos.x() - r, dy = pos.y() - r;
+        double ang = std::atan2(-dy, dx) * 180.0 / M_PI;
+        if (ang < 0)
+            ang += 360;
+        const double sat = qMin(1.0, std::sqrt(dx * dx + dy * dy) / r);
+        color = QColor::fromHsv(int(ang) % 360, int(sat * 255), value);
+        update();
+        if (changed)
+            changed(color);
+    }
+};
+}  // namespace
+
+void applyAccent(const QColor& preview)
+{
+    QString& base = baseStyle();
+    if (base.isEmpty())
+        base = qApp->styleSheet();
+    if (base.isEmpty())
+        return;
+    const QColor a = preview.isValid() ? preview : QColor(setting(cfg::Accent).toString());
+    if (!a.isValid() || a == QColor(Qt::white)) {
+        qApp->setStyleSheet(base);
+        return;
+    }
+    // texto sobre el color: negro si el color es claro, blanco si es oscuro
+    const double lum = 0.2126 * a.redF() + 0.7152 * a.greenF() + 0.0722 * a.blueF();
+    const QString acc = a.name(), on = lum > 0.55 ? QStringLiteral("#0d0d0e") : QStringLiteral("#ffffff");
+    const QString hover = (lum > 0.5 ? a.darker(112) : a.lighter(118)).name();
+    const QString press = (lum > 0.5 ? a.darker(125) : a.lighter(135)).name();
+    QString q = base;
+    q.replace(QRegularExpression("((?:selection-)?background(?:-color)?:\\s*)#ffffff", QRegularExpression::CaseInsensitiveOption), "\\1" + acc);
+    q.replace(QRegularExpression("(border[\\w-]*:[^;{}]*?)#ffffff", QRegularExpression::CaseInsensitiveOption), "\\1" + acc);
+    q.replace(QRegularExpression("(background(?:-color)?:\\s*)#e4e4e7", QRegularExpression::CaseInsensitiveOption), "\\1" + hover);
+    q.replace(QRegularExpression("(border-color:\\s*)#e4e4e7", QRegularExpression::CaseInsensitiveOption), "\\1" + hover);
+    q.replace(QRegularExpression("(background(?:-color)?:\\s*)#d4d4d8", QRegularExpression::CaseInsensitiveOption), "\\1" + press);
+    q.replace(QRegularExpression("((?<![\\w-])color:\\s*|selection-color:\\s*)#0d0d0e", QRegularExpression::CaseInsensitiveOption), "\\1" + on);
+    qApp->setStyleSheet(q);
+}
+
+void openAccentPicker(QWidget* parent)
+{
+    const QColor original(setting(cfg::Accent).toString());
+    QDialog dlg(parent);
+    dlg.setWindowTitle(QObject::tr("Color del launcher"));
+    auto* v = new QVBoxLayout(&dlg);
+    v->setSpacing(12);
+    auto* intro = new QLabel(QObject::tr("Elige el color de los botones, la selección y los bordes. El fondo sigue negro."), &dlg);
+    intro->setWordWrap(true);
+    v->addWidget(intro);
+    auto* row = new QHBoxLayout();
+    auto* wheel = new ColorWheel(&dlg);
+    wheel->setColor(original.isValid() ? original : QColor(Qt::white));
+    row->addWidget(wheel);
+    auto* side = new QVBoxLayout();
+    side->addWidget(new QLabel(QObject::tr("Brillo"), &dlg));
+    auto* bright = new QSlider(Qt::Horizontal, &dlg);
+    bright->setRange(40, 255);
+    bright->setValue(wheel->value);
+    side->addWidget(bright);
+    auto* swatch = new QLabel(&dlg);
+    swatch->setFixedSize(120, 44);
+    side->addWidget(swatch);
+    auto* hex = new QLineEdit(&dlg);
+    hex->setPlaceholderText(QStringLiteral("#ff69b4"));
+    hex->setMaxLength(7);
+    side->addWidget(hex);
+    side->addWidget(new QLabel(QObject::tr("Rápidos"), &dlg));
+    auto* grid = new QGridLayout();
+    grid->setSpacing(6);
+    const QList<QPair<QString, QString>> presets = { { "#ffffff", QObject::tr("Blanco") }, { "#ff69b4", QObject::tr("Rosa") },   { "#ef4444", QObject::tr("Rojo") },
+                                                    { "#f97316", QObject::tr("Naranja") }, { "#facc15", QObject::tr("Amarillo") }, { "#22c55e", QObject::tr("Verde") },
+                                                    { "#22d3ee", QObject::tr("Cian") },    { "#3b82f6", QObject::tr("Azul") },    { "#a855f7", QObject::tr("Morado") } };
+    int i = 0;
+    QList<QPushButton*> presetButtons;
+    for (const auto& pr : presets) {
+        auto* b = new QPushButton(&dlg);
+        b->setFixedSize(28, 28);
+        b->setToolTip(pr.second);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setStyleSheet(QStringLiteral("QPushButton{background:%1;border:2px solid #3a3a40;border-radius:14px;}QPushButton:hover{border-color:#f4f4f5;}").arg(pr.first));
+        b->setProperty("hex", pr.first);
+        grid->addWidget(b, i / 3, i % 3);
+        presetButtons << b;
+        i++;
+    }
+    side->addLayout(grid);
+    side->addStretch();
+    row->addLayout(side);
+    v->addLayout(row);
+    auto* bb = new QDialogButtonBox(&dlg);
+    auto* reset = bb->addButton(QObject::tr("Volver al blanco"), QDialogButtonBox::ResetRole);
+    bb->addButton(QObject::tr("Guardar"), QDialogButtonBox::AcceptRole);
+    bb->addButton(QObject::tr("Cancelar"), QDialogButtonBox::RejectRole);
+    v->addWidget(bb);
+
+    auto current = std::make_shared<QColor>(wheel->color);
+    auto show = [swatch, hex, current](const QColor& c, bool updateHex) {
+        *current = c;
+        swatch->setStyleSheet(QStringLiteral("background:%1;border-radius:8px;").arg(c.name()));
+        if (updateHex)
+            hex->setText(c.name());
+        applyAccent(c);  // vista previa en vivo
+    };
+    wheel->changed = [show](const QColor& c) { show(c, true); };
+    QObject::connect(bright, &QSlider::valueChanged, &dlg, [wheel](int val) { wheel->setValue(val); });
+    QObject::connect(hex, &QLineEdit::textEdited, &dlg, [wheel, bright, show](const QString& t) {
+        const QColor c(t.startsWith('#') ? t : '#' + t);
+        if (c.isValid() && t.size() >= 6) {
+            wheel->setColor(c);
+            bright->blockSignals(true);
+            bright->setValue(wheel->value);
+            bright->blockSignals(false);
+            show(c, false);
+        }
+    });
+    for (auto* b : presetButtons)
+        QObject::connect(b, &QPushButton::clicked, &dlg, [b, wheel, bright, show] {
+            const QColor c(b->property("hex").toString());
+            wheel->setColor(c);
+            bright->blockSignals(true);
+            bright->setValue(wheel->value);
+            bright->blockSignals(false);
+            show(c, true);
+        });
+    QObject::connect(reset, &QPushButton::clicked, &dlg, [wheel, bright, show] {
+        wheel->setColor(Qt::white);
+        bright->blockSignals(true);
+        bright->setValue(255);
+        bright->blockSignals(false);
+        show(Qt::white, true);
+    });
+    QObject::connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    QObject::connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    show(*current, true);
+    if (dlg.exec() == QDialog::Accepted) {
+        setSetting(cfg::Accent, current->name());
+        applyAccent();
+    } else {
+        applyAccent();  // vuelve al color guardado
+    }
 }
 
 }  // namespace fps

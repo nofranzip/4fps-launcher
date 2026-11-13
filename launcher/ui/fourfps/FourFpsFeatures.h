@@ -3,6 +3,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QColor>
 #include <QImage>
 #include <QObject>
 #include <QPixmap>
@@ -30,7 +31,7 @@ class QSpinBox;
 namespace fps {
 
 // versión de 4fps (se compara con la última release de GitHub)
-inline const char* Version = "1.1.1";
+inline const char* Version = "1.2.0";
 
 // ---------------------------------------------------------------- ajustes
 namespace cfg {
@@ -50,6 +51,7 @@ inline const char* Lyrics = "FourFps_Lyrics";
 inline const char* LyricsOffset = "FourFps_LyricsOffset";
 inline const char* LyricsOverlay = "FourFps_LyricsOverlay";
 inline const char* LyricsPort = "FourFps_LyricsPort";
+inline const char* Accent = "FourFps_Accent";
 }  // namespace cfg
 
 void registerSettings();
@@ -216,6 +218,9 @@ QWidget* buildGalleryPage(QWidget* parent);
 void refreshGalleryPage(QWidget* page);
 QWidget* buildLiveServersStrip(QWidget* parent);
 QWidget* buildEventCard(QWidget* parent);
+// color de la interfaz (botones, selección, bordes). El fondo sigue negro.
+void applyAccent(const QColor& preview = QColor());
+void openAccentPicker(QWidget* parent);
 // aviso de versión nueva (consulta la última release de GitHub)
 QWidget* buildUpdateBanner(QWidget* parent);
 void editModGroups(QWidget* parent, MinecraftInstance* inst);

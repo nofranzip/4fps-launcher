@@ -79,6 +79,7 @@ void registerSettings()
     reg(cfg::LyricsOffset, 0);
     reg(cfg::LyricsOverlay, true);
     reg(cfg::LyricsPort, 47323);
+    reg(cfg::Accent, QStringLiteral("#ffffff"));
 }
 
 QVariant setting(const char* key)
@@ -152,6 +153,16 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
         m_checks << qMakePair(it.first, c);
     }
     v->addWidget(g1);
+
+    auto* gc = new QGroupBox(tr("Color del launcher"), host);
+    auto* gcv = new QHBoxLayout(gc);
+    auto* colorHint = new QLabel(tr("Cambia el color de los botones, la selección y los bordes. El fondo sigue negro."), gc);
+    colorHint->setWordWrap(true);
+    gcv->addWidget(colorHint, 1);
+    auto* pick = new QPushButton(tr("Elegir color..."), gc);
+    connect(pick, &QPushButton::clicked, this, [this] { openAccentPicker(this); });
+    gcv->addWidget(pick);
+    v->addWidget(gc);
 
     auto* g2 = new QGroupBox(tr("Mis servidores (portada)"), host);
     auto* g2v = new QVBoxLayout(g2);
