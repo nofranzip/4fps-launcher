@@ -1,8 +1,9 @@
-// 4fps - Cliente PvP: instala AxolotlClient (y sus dependencias) desde Modrinth antes de jugar
+// 4fps - Cliente PvP: instala OneConfig de Polyfrost + PolyHitbox/PolyCrosshair (y sus dependencias) desde Modrinth antes de jugar
 #include "FourFpsShell.h"
 
 #include <QDebug>
 #include <QDir>
+#include <QHash>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -67,6 +68,16 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
         if (project == "fabric-api" || project == "P7dR8mSH") {
             for (const auto& f : QDir(modsDir()).entryList({ "*.jar" }))
                 if (f.startsWith("fabric-api", Qt::CaseInsensitive))
+                    return true;
+        }
+        // si el usuario ya tiene el mod puesto con otro nombre de archivo, no se duplica
+        static const QHash<QString, QString> prefixes = { { "oneconfig", "oneconfig" },
+                                                         { "fabric-language-kotlin", "fabric-language-kotlin" },
+                                                         { "hitbox", "polyhitbox" },
+                                                         { "crosshair", "polycrosshair" } };
+        if (prefixes.contains(project)) {
+            for (const auto& f : QDir(modsDir()).entryList({ "*.jar" }))
+                if (f.startsWith(prefixes.value(project), Qt::CaseInsensitive) && !inst->settings()->get(filesKey).toStringList().contains(f))
                     return true;
         }
         return false;
@@ -276,7 +287,8 @@ void FourFpsShell::launchAfterCapes(MinecraftInstance* inst)
     job->inst = inst;
     job->mc = mcVersionOf(inst);
     job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
-    job->queue = { "axolotlclient", "fabric-api" };
+    // OneConfig (menú de mods y editor de HUD) + mods PvP de Polyfrost; los que no existan para la versión se saltan
+    job->queue = { "oneconfig", "hitbox", "crosshair", "fabric-language-kotlin", "fabric-api" };
     job->progress = new QProgressDialog(tr("Preparando Cliente PvP 4fps..."), QString(), 0, 0, this);
     job->progress->setWindowTitle(QStringLiteral("4fps"));
     job->progress->setCancelButton(nullptr);

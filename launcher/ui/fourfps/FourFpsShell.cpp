@@ -731,7 +731,7 @@ QWidget* FourFpsShell::buildInstancesPage()
     };
     m_pvpToggle = new QCheckBox(tr("Cliente PvP 4fps"), m_detailBody);
     m_pvpToggle->setObjectName(QStringLiteral("fpsToggle"));
-    m_pvpToggle->setToolTip(tr("FPS, CPS, keystrokes, crosshair, hitboxes, zoom y HUD de armadura (AxolotlClient)"));
+    m_pvpToggle->setToolTip(tr("Menú OneConfig de Polyfrost (Shift derecho): ajustes de todos tus mods, editor de HUD, hitboxes y crosshair"));
     connect(m_pvpToggle, &QCheckBox::toggled, this, [this](bool on) {
         if (auto* inst = m_hooks.selected())
             setPvpEnabled(inst, on);
@@ -881,7 +881,7 @@ void FourFpsShell::updateDetail()
     m_pvpToggle->setChecked(supported && pvpEnabled(sel));
     m_pvpToggle->setEnabled(supported);
     m_pvpToggle->blockSignals(false);
-    m_pvpHint->setText(supported ? tr("HUD de FPS/CPS, keystrokes, crosshair, hitboxes y zoom. Se instala solo al jugar.")
+    m_pvpHint->setText(supported ? tr("OneConfig de Polyfrost: menú de mods, editor de HUD, hitboxes y crosshair. Se instala solo al jugar.")
                                  : tr("Disponible en instancias Fabric o Quilt."));
 }
 

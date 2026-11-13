@@ -4,7 +4,7 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 
 ## Qué trae
 - Interfaz propia en tonos grises (Instancias, Versiones, Mods, Archivos, Servers, Skins, Perfil).
-- Cliente PvP opcional (AxolotlClient) en instancias Fabric.
+- Cliente PvP opcional en instancias Fabric: OneConfig de Polyfrost (menú de mods, editor de HUD) + PolyHitbox.
 - Ropa y capas sobre la skin, galería de capas y capas en el juego (solo 4fps) vía Cape Provider.
 - Render 3D de la skin con poses, armaduras, objetos y exportación sin fondo.
 - Perfil con medallas por servidor o código y notificaciones.
