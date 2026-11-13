@@ -680,11 +680,15 @@ QWidget* buildGalleryPage(QWidget* parent)
     auto* bar = new QHBoxLayout();
     page->filter = new QComboBox(page);
     page->filter->addItems({ QObject::tr("Todo"), QObject::tr("Capturas"), QObject::tr("Clips") });
+    page->filter->setToolTip(QObject::tr("Muestra todo, solo capturas o solo clips de Flashback."));
     bar->addWidget(page->filter);
     bar->addStretch();
     const QStringList names = { QObject::tr("Abrir"), QObject::tr("Abrir carpeta"), QObject::tr("Copiar"), QObject::tr("Borrar") };
-    for (const auto& n : names) {
-        auto* b = makeButton(n, QString(), n == names.first(), page);
+    const QStringList helps = { QObject::tr("Abre el archivo con el programa de Windows."), QObject::tr("Abre la carpeta donde está guardado."), QObject::tr("Copia la imagen (o el archivo del clip) para pegarlo en Discord, WhatsApp, etc."), QObject::tr("Manda el archivo a la papelera. Te pide confirmación.") };
+    for (int i = 0; i < names.size(); i++) {
+        const QString& n = names[i];
+        auto* b = makeButton(n, QString(), i == 0, page);
+        b->setToolTip(QStringLiteral("<b>%1</b><br>%2").arg(n, helps[i]));
         b->setEnabled(false);
         bar->addWidget(b);
         page->actions << b;
@@ -826,6 +830,8 @@ void LiveServers::rebuild()
         auto* card = makeCard(this);
         card->setFixedHeight(84);
         card->setMinimumWidth(250);
+        card->setToolTip(eventOnly ? QObject::tr("<b>Servidor de eventos</b><br>Solo abre en eventos. Se actualiza cada minuto.")
+                                   : QObject::tr("<b>Estado del servidor</b><br>Jugadores, ping y versión. Se actualiza cada minuto. Edita la lista en Ajustes → Funciones 4fps."));
         card->setMaximumWidth(380);
         auto* h = new QHBoxLayout(card);
         h->setContentsMargins(12, 10, 12, 10);
@@ -977,6 +983,7 @@ QWidget* buildUpdateBanner(QWidget* parent)
     auto* text = new QLabel(bar);
     h->addWidget(text, 1);
     auto* get = new QPushButton(QObject::tr("Descargar"), bar);
+    get->setToolTip(QObject::tr("Abre la página de la versión nueva para bajar el instalador."));
     get->setCursor(Qt::PointingHandCursor);
     auto* later = new QPushButton(QObject::tr("Más tarde"), bar);
     later->setObjectName(QStringLiteral("later"));

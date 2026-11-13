@@ -277,7 +277,7 @@ void FourFpsShell::updateBell()
         if (!v.toObject().value("read").toBool())
             unread++;
     m_bell->setIcon(bellIcon(unread));
-    m_bell->setToolTip(unread ? tr("%n notificación(es) nueva(s)", "", unread) : tr("Notificaciones"));
+    m_bell->setToolTip(QStringLiteral("<b>%1</b><br>%2").arg(tr("Notificaciones"), unread ? tr("Tienes %n nueva(s): medallas y avisos.", "", unread) : tr("Aquí llegan tus medallas y avisos.")));
 }
 
 void FourFpsShell::showNotifications()

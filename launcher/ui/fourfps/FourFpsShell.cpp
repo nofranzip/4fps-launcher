@@ -491,6 +491,14 @@ void InstanceCard::mousePressEvent(QMouseEvent* e)
 }
 
 // --------------------------------------------------------------- FourFpsShell
+namespace {
+// tooltip con título en negrita y una explicación corta
+QString tip(const QString& title, const QString& text)
+{
+    return QStringLiteral("<div style='font-size:10pt'><b>%1</b><br>%2</div>").arg(title.toHtmlEscaped(), text.toHtmlEscaped().replace('\n', QStringLiteral("<br>")));
+}
+}  // namespace
+
 FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent), m_hooks(std::move(hooks))
 {
     setObjectName(QStringLiteral("fpsRoot"));
@@ -615,20 +623,46 @@ QWidget* FourFpsShell::buildSidebar()
         return b;
     };
     // las secciones que todavia abren la ventana de Prism no quedan marcadas
-    add("accounts", tr("Cuenta"), [this] { showPage(0); });
-    add("instance-settings", tr("Instancias"), [this] { showPage(1); });
-    add("new", tr("Versiones"), [this] { showPage(2); });
-    add("loadermods", tr("Mods"), [this] { showPage(3); });
-    add("screenshots", tr("Archivos"), [this] { showPage(4); });
-    add("server", tr("Servers"), [this] { showPage(5); });
-    add("appearance", tr("Skins"), [this] { showPage(6); });
-    add("star", tr("Perfil"), [this] { showPage(8); });
+    {
+        auto* nb = add("accounts", tr("Cuenta"), [this] { showPage(0); });
+        nb->setToolTip(tip(tr("Cuenta"), tr("Inicia sesión con Microsoft o agrega cuentas sin premium.")));
+    }
+    {
+        auto* nb = add("instance-settings", tr("Instancias"), [this] { showPage(1); });
+        nb->setToolTip(tip(tr("Instancias"), tr("Tus versiones de Minecraft instaladas, el estado de tus servidores y el botón Jugar.")));
+    }
+    {
+        auto* nb = add("new", tr("Versiones"), [this] { showPage(2); });
+        nb->setToolTip(tip(tr("Versiones"), tr("Crea una instancia nueva eligiendo la versión y el loader (Fabric, Forge...).")));
+    }
+    {
+        auto* nb = add("loadermods", tr("Mods"), [this] { showPage(3); });
+        nb->setToolTip(tip(tr("Mods"), tr("Mods de la instancia elegida: instala, activa, desactiva y agrúpalos.")));
+    }
+    {
+        auto* nb = add("screenshots", tr("Archivos"), [this] { showPage(4); });
+        nb->setToolTip(tip(tr("Archivos"), tr("Resource packs, shaders, mundos y otros archivos de la instancia.")));
+    }
+    {
+        auto* nb = add("server", tr("Servers"), [this] { showPage(5); });
+        nb->setToolTip(tip(tr("Servers"), tr("Tus servidores guardados: logo, jugadores en línea y Unirse directo.")));
+    }
+    {
+        auto* nb = add("appearance", tr("Skins"), [this] { showPage(6); });
+        nb->setToolTip(tip(tr("Skins"), tr("Ropa y accesorios sobre tu skin, capas y tu skin de Minecraft.")));
+    }
+    {
+        auto* nb = add("star", tr("Perfil"), [this] { showPage(8); });
+        nb->setToolTip(tip(tr("Perfil"), tr("Tu tarjeta de jugador, medallas, próximo evento y canje de códigos.")));
+    }
     m_galleryNav = add("screenshots", tr("Galería"), [this] { showPage(9); });
+    m_galleryNav->setToolTip(tip(tr("Galería"), tr("Tus capturas (F2) y los clips que exportas con Flashback.")));
     v->addStretch(1);
     auto* settings = new QPushButton(QIcon::fromTheme("settings"), QStringLiteral("   ") + tr("Ajustes"), side);
     settings->setObjectName(QStringLiteral("navButton"));
     settings->setIconSize(QSize(17, 17));
     settings->setCursor(Qt::PointingHandCursor);
+    settings->setToolTip(tip(tr("Ajustes"), tr("Ajustes del launcher. En \"Funciones 4fps\" prendes o apagas cada función nueva.")));
     connect(settings, &QPushButton::clicked, this, [this] { m_hooks.settings(); });
     v->addWidget(settings);
     return side;
@@ -746,15 +780,17 @@ QWidget* FourFpsShell::buildInstancesPage()
     stats->addWidget(statBox(tr("RAM"), m_detailRam));
     stats->addWidget(statBox(tr("JAVA"), m_detailJava));
     bv->addLayout(stats);
-    auto row = [this, bv](const QString& text, const QString& icon, std::function<void()> fn) {
+    auto row = [this, bv](const QString& text, const QString& icon, std::function<void()> fn, const QString& help = QString()) {
         auto* b = makeButton(text, icon, false, m_detailBody);
         b->setObjectName(QStringLiteral("fpsRowButton"));
+        if (!help.isEmpty())
+            b->setToolTip(tip(text, help));
         connect(b, &QPushButton::clicked, this, fn);
         bv->addWidget(b);
     };
     m_pvpToggle = new QCheckBox(tr("Cliente PvP 4fps"), m_detailBody);
     m_pvpToggle->setObjectName(QStringLiteral("fpsToggle"));
-    m_pvpToggle->setToolTip(tr("Menú OneConfig de Polyfrost (Shift derecho): ajustes de todos tus mods, editor de HUD, hitboxes y crosshair"));
+    m_pvpToggle->setToolTip(tip(tr("Cliente PvP 4fps"), tr("Al jugar instala OneConfig de Polyfrost: menú de todos tus mods (Shift derecho), editor de HUD, hitboxes y crosshair. Solo en instancias Fabric.")));
     connect(m_pvpToggle, &QCheckBox::toggled, this, [this](bool on) {
         if (auto* inst = m_hooks.selected())
             setPvpEnabled(inst, on);
@@ -783,11 +819,11 @@ QWidget* FourFpsShell::buildInstancesPage()
     m_slowHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
     m_slowHint->setWordWrap(true);
     bv->addWidget(m_slowHint);
-    row(tr("Mods de la instancia"), "loadermods", [this] { m_hooks.openPage("mods"); });
-    row(tr("Grupos de mods"), "tag", [this] { fps::editModGroups(this, m_hooks.selected()); });
-    row(tr("Abrir carpeta"), "viewfolder", [this] { m_hooks.openFolder(); });
-    row(tr("Duplicar"), "copy", [this] { m_hooks.copyInstance(); });
-    row(tr("Eliminar"), "delete", [this] { m_hooks.deleteInstance(); });
+    row(tr("Mods de la instancia"), "loadermods", [this] { m_hooks.openPage("mods"); }, tr("Abre la lista completa de mods de esta instancia (también para buscar actualizaciones)."));
+    row(tr("Grupos de mods"), "tag", [this] { fps::editModGroups(this, m_hooks.selected()); }, tr("Junta mods que deben actualizarse a la vez (ej: Sodium + Iris + Voxy) o bloquéalos para que no se actualicen."));
+    row(tr("Abrir carpeta"), "viewfolder", [this] { m_hooks.openFolder(); }, tr("Abre la carpeta de la instancia en el explorador de Windows."));
+    row(tr("Duplicar"), "copy", [this] { m_hooks.copyInstance(); }, tr("Crea una copia exacta de la instancia, con sus mods y mundos."));
+    row(tr("Eliminar"), "delete", [this] { m_hooks.deleteInstance(); }, tr("Borra la instancia y todos sus archivos. Te pide confirmación."));
     bv->addStretch(1);
     auto* jugar = makeButton(QStringLiteral("▶  ") + tr("Jugar"), QString(), true, m_detailBody);
     jugar->setMinimumHeight(42);
@@ -937,7 +973,10 @@ void FourFpsShell::updateDetail()
         m_slowHint->setText(slow ? tr("Activo: menos RAM, sin mods pesados y video bajo.")
                                  : (hw.weak() ? tr("Recomendado para tu PC (%1 GB RAM).").arg(QString::number(hw.ramMb / 1024.0, 'f', 0)) : QString()));
         m_slowHint->setVisible(fps::enabled(fps::cfg::SlowPc) && !m_slowHint->text().isEmpty());
-        m_slowButton->setToolTip(hwText);
+        m_slowButton->setToolTip(tip(slow ? tr("Modo normal") : tr("Modo PC lento"),
+                                     (slow ? tr("Deshace el Modo PC lento: vuelve la RAM, reactiva los mods y restaura las opciones de video.")
+                                           : tr("Para PCs débiles: ajusta la RAM, desactiva mods pesados (Voxy, Distant Horizons, Iris/shaders, EMF, Lyrica) y baja la distancia de render. Se deshace con un clic.")) +
+                                         QStringLiteral("\n\n") + tr("Tu PC: %1").arg(hwText)));
     }
     m_pvpHint->setText(supported ? tr("OneConfig de Polyfrost: menú de mods, editor de HUD, hitboxes y crosshair. Se instala solo al jugar.")
                                  : tr("Disponible en instancias Fabric o Quilt."));
@@ -982,20 +1021,21 @@ QWidget* FourFpsShell::buildBottomBar()
     m_musicToggle->setObjectName(QStringLiteral("fpsChip"));
     m_musicToggle->setCheckable(true);
     m_musicToggle->setCursor(Qt::PointingHandCursor);
-    m_musicToggle->setToolTip(tr("Letras de la canción que suena en tu PC (Spotify, YouTube, etc.), en el launcher y sobre el juego"));
+    m_musicToggle->setToolTip(tip(tr("Modo música"), tr("Detecta la canción que suena en tu PC (Spotify, YouTube en el navegador, etc.) y muestra la letra sincronizada aquí abajo y en una ventanita sobre el juego. Para OBS usa la fuente de navegador http://127.0.0.1:47323/. Clic para prender o apagar.")));
     connect(m_musicToggle, &QPushButton::toggled, this, [](bool on) { fps::setSetting(fps::cfg::Lyrics, on); });
     h->addWidget(m_musicToggle);
     m_streamToggle = new QPushButton(tr("Modo stream"), bar);
     m_streamToggle->setObjectName(QStringLiteral("fpsChip"));
     m_streamToggle->setCheckable(true);
     m_streamToggle->setCursor(Qt::PointingHandCursor);
-    m_streamToggle->setToolTip(tr("Oculta IPs, nombres de servidores privados, tu cuenta y datos de amigos"));
+    m_streamToggle->setToolTip(tip(tr("Modo stream"), tr("Para transmitir sin mostrar datos privados: oculta IPs, nombres de servidores, tu nombre de cuenta y el servidor en Discord. Clic para prender o apagar.")));
     connect(m_streamToggle, &QPushButton::toggled, this, [](bool on) { fps::setSetting(fps::cfg::StreamMode, on); });
     h->addWidget(m_streamToggle);
     connect(fps::LyricsService::get(), &fps::LyricsService::updated, this, &FourFpsShell::updateNowPlaying);
     m_combo = new QComboBox(bar);
     m_combo->setObjectName(QStringLiteral("fpsCombo"));
     m_combo->setMinimumSize(160, 44);
+    m_combo->setToolTip(tip(tr("Instancia"), tr("Elige con qué instancia jugar.")));
     connect(m_combo, &QComboBox::activated, this, [this](int idx) {
         const QString id = m_combo->itemData(idx).toString();
         if (auto* inst = APPLICATION->instances()->getInstanceById(id))
@@ -1006,6 +1046,7 @@ QWidget* FourFpsShell::buildBottomBar()
     m_play->setObjectName(QStringLiteral("playButton"));
     m_play->setMinimumSize(180, 48);
     m_play->setCursor(Qt::PointingHandCursor);
+    m_play->setToolTip(tip(tr("Jugar"), tr("Abre Minecraft con la instancia elegida. Antes revisa que no haya mods en conflicto.")));
     connect(m_play, &QPushButton::clicked, this, &FourFpsShell::launchSelected);
     m_launchStatus = new QLabel(bar);
     m_launchStatus->setObjectName(QStringLiteral("fpsLaunchStatus"));

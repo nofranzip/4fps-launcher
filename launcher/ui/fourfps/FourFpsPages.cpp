@@ -545,7 +545,7 @@ QWidget* FourFpsShell::buildModsPage()
     fr->addWidget(m_modsInstalledChip);
     auto* groupsBtn = chip(tr("Grupos"), page);
     groupsBtn->setCheckable(false);
-    groupsBtn->setToolTip(tr("Grupos de mods que se actualizan juntos (ej: Renderizado: Sodium, Iris, Voxy...)"));
+    groupsBtn->setToolTip(tr("<b>Grupos de mods</b><br>Junta mods que deben actualizarse juntos (ej: Renderizado: Sodium, Iris, Voxy...) o bloquéalos para que no se actualicen."));
     connect(groupsBtn, &QPushButton::clicked, this, [this] {
         if (!fps::enabled(fps::cfg::ModGroups)) {
             QMessageBox::information(this, tr("Grupos de mods"), tr("Los grupos están apagados. Actívalos en Ajustes → Funciones 4fps."));

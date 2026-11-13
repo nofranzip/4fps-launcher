@@ -30,7 +30,7 @@ class QSpinBox;
 namespace fps {
 
 // versión de 4fps (se compara con la última release de GitHub)
-inline const char* Version = "1.1.0";
+inline const char* Version = "1.1.1";
 
 // ---------------------------------------------------------------- ajustes
 namespace cfg {
