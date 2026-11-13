@@ -601,10 +601,10 @@ QWidget* FourFpsShell::buildSidebar()
     m_bell = new QToolButton(side);
     m_bell->setObjectName(QStringLiteral("fpsBell"));
     m_bell->setAutoRaise(true);
-    m_bell->setIconSize(QSize(28, 28));
+    m_bell->setIconSize(QSize(24, 24));
     m_bell->setFixedSize(30, 36);
     m_bell->setCursor(Qt::PointingHandCursor);
-    m_bell->setStyleSheet(QStringLiteral("QToolButton#fpsBell{border:none;border-radius:8px;background:transparent;}"
+    m_bell->setStyleSheet(QStringLiteral("QToolButton#fpsBell{border:none;border-radius:8px;background:transparent;padding:0px;}"
                                          "QToolButton#fpsBell:hover{background:#26262b;}"));
     connect(m_bell, &QToolButton::clicked, this, &FourFpsShell::showNotifications);
     // botón de color: un círculo cromático chico
