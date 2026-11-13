@@ -68,7 +68,7 @@ void registerSettings()
     reg(cfg::CrashExplainer, true);
     reg(cfg::ModGroups, true);
     reg(cfg::LiveServers, true);
-    reg(cfg::LiveServerList, QStringList{ QStringLiteral("Permaquistán|permaquistan.serverprism.online|evento") });
+    reg(cfg::LiveServerList, QStringList());  // vacío: cada jugador agrega los suyos en Ajustes
     reg(cfg::Events, true);
     reg(cfg::EventsUrl, QStringLiteral("https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/eventos.json"));
     reg(cfg::Gallery, true);

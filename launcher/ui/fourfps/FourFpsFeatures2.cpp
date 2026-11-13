@@ -941,10 +941,11 @@ void LiveServers::rebuild()
             it->widget()->deleteLater();
         delete it;
     }
-    setVisible(enabled(cfg::LiveServers));
-    if (!enabled(cfg::LiveServers))
-        return;
     const QStringList list = setting(cfg::LiveServerList).toStringList();
+    const bool show = enabled(cfg::LiveServers) && !list.isEmpty();
+    setVisible(show);
+    if (!show)
+        return;
     int idx = 0;
     for (const auto& entry : list) {
         idx++;
@@ -1038,6 +1039,7 @@ QWidget* buildEventCard(QWidget* parent)
         card->hide();
         return card;
     }
+    card->hide();  // aparece solo si hay un evento anunciado
     QPointer<QLabel> pName(name), pWhen(when), pDesc(desc);
     QNetworkRequest req(QUrl(setting(cfg::EventsUrl).toString()));
     req.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
@@ -1060,11 +1062,16 @@ QWidget* buildEventCard(QWidget* parent)
             }
         }
         if (next.isEmpty()) {
+            // sin eventos anunciados: la tarjeta no se muestra
+            if (auto* card = pName->parentWidget())
+                card->hide();
             pName->setText(QObject::tr("No hay eventos anunciados"));
             pWhen->setText(QString());
             pDesc->setText(QObject::tr("Cuando se anuncie uno, aparece aquí."));
             return;
         }
+        if (auto* card = pName->parentWidget())
+            card->show();
         pName->setText(next.value("nombre").toString());
         const qint64 secs = now.secsTo(nextDate);
         QString falta;
