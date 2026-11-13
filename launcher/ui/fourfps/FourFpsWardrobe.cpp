@@ -200,6 +200,8 @@ void FourFpsShell::seedStarterPack()
             changed = true;
         }
     }
+    // la capa dorada pasó a ser exclusiva del equipo: se quita de "Mis capas" si la copió una versión anterior
+    QFile::remove(localCapesDir() + "/4fps dorada.png");
     if (changed) {
         QFile f(marker);
         if (f.open(QIODevice::WriteOnly | QIODevice::Truncate | QIODevice::Text))
@@ -604,6 +606,7 @@ void FourFpsShell::refreshCapes()
         QString id, name;
         QImage tex;
         QString localPath;
+        bool locked = false;
     };
     QList<Entry> entries;
     int row = 0;
@@ -648,6 +651,20 @@ void FourFpsShell::refreshCapes()
         }
     }
     const int officialCount = entries.size();
+    // capas exclusivas: solo para quien tiene la medalla (pack4fps/exclusivas/<medalla>/*.png)
+    const QStringList owned = ownedBadges();
+    const QString exclRoot = QCoreApplication::applicationDirPath() + "/pack4fps/exclusivas";
+    for (const auto& badgeDir : QDir(exclRoot).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
+        for (const auto& fi : QDir(badgeDir.absoluteFilePath()).entryInfoList({ "*.png" }, QDir::Files, QDir::Name)) {
+            const QImage t = lightCape(QImage(fi.absoluteFilePath()));
+            if (t.isNull())
+                continue;
+            Entry e{ QString(), fi.completeBaseName(), t, fi.absoluteFilePath() };
+            e.locked = !owned.contains(badgeDir.fileName());
+            entries << e;
+        }
+    }
+    const int exclusiveEnd = entries.size();
     // capas muy pesadas (animadas largas / 4K): se apartan a capas/pesadas para que la galeria no se trabe
     {
         const QString heavyDir = localCapesDir() + "/pesadas";
@@ -734,7 +751,13 @@ void FourFpsShell::refreshCapes()
             section(tr("CAPAS DE TU CUENTA"));
             col = 0;
         }
-        if (i == officialCount) {
+        if (i == officialCount && exclusiveEnd > officialCount) {
+            if (col != 0)
+                row++;
+            section(tr("EXCLUSIVAS · solo para el Equipo 4fps"));
+            col = 0;
+        }
+        if (i == exclusiveEnd) {
             if (col != 0)
                 row++;
             section(tr("MIS CAPAS · render y juego (solo 4fps)"));
@@ -776,8 +799,17 @@ void FourFpsShell::refreshCapes()
         }
         tile->setIconSize(QSize(140, 140));
         QString label = (!isLocal && e.id == current && premium) ? e.name + "  ·  " + tr("En uso") : e.name;
+        if (e.locked) {
+            label = tr("Bloqueada");
+            tile->setEnabled(false);
+            QPixmap pm = tile->icon().pixmap(140, 140);
+            QPainter lp(&pm);
+            lp.fillRect(pm.rect(), QColor(13, 13, 14, 150));
+            lp.end();
+            tile->setIcon(pm);
+        }
         tile->setText(tile->fontMetrics().elidedText(label, Qt::ElideRight, 140));
-        tile->setToolTip(e.name);
+        tile->setToolTip(e.locked ? tr("%1 · exclusiva del Equipo 4fps (canjea el código del equipo en Perfil)").arg(e.name) : e.name);
         group->addButton(tile);
         const QString id = e.id, name = e.name, path = e.localPath;
         const QImage tex = e.tex;
@@ -802,7 +834,7 @@ void FourFpsShell::refreshCapes()
     }
     if (col != 0)
         row++;
-    if (localEnd == officialCount)
+    if (localEnd == exclusiveEnd)
         section(tr("No tienes capas personales todavía. Usa \"Importar capas (PNG)\"."));
     if (entries.size() == localEnd) {
         if (col != 0)

@@ -127,7 +127,7 @@ def solid(col,noise=6):
     return p
 def logo4(f):
     solid(hexc('#3f3f46'))(f)
-    four=["1..1","1..1","1111","1...","1..."]
+    four=["1..1","1..1","1111","...1","...1"]
     for j,r in enumerate(four):
         for i,ch in enumerate(r):
             if ch=='1': f.putpixel((3+i,5+j),(240,240,240,255))
@@ -228,11 +228,16 @@ def heart(f):
 cape('Corazon',heart)
 def gold4(f):
     grad('#fde68a','#b45309')(f)
-    four=["1..1","1..1","1111","1...","1..."]
+    four=["1..1","1..1","1111","...1","...1"]
     for j,r in enumerate(four):
         for i,ch in enumerate(r):
             if ch=='1': f.putpixel((3+i,5+j),hexc('#451a03'))
-cape('4fps dorada',gold4)
+os.makedirs(OUT+'/exclusivas/equipo',exist_ok=True)
+_c=Image.new('RGBA',(64,32),(0,0,0,0)); _f=Image.new('RGBA',(10,16)); gold4(_f)
+_c.paste(_f,(1,1)); _c.paste(_f.transpose(Image.FLIP_LEFT_RIGHT),(12,1))
+for y in range(1,17): _c.putpixel((0,y),_f.getpixel((0,y-1))); _c.putpixel((11,y),_f.getpixel((9,y-1)))
+for x in range(1,11): _c.putpixel((x,0),_f.getpixel((x-1,0))); _c.putpixel((x+10,0),_f.getpixel((x-1,15)))
+_c.save(OUT+'/exclusivas/equipo/4fps dorada.png')
 def camo(f):
     cols=['#3f6212','#4d7c0f','#365314','#57534e']
     for y in range(16):
