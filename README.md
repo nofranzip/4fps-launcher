@@ -23,6 +23,10 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.4.4
+
+- **4fps Client 1.1.2** (26.2 y 26.3): minimapa con **terreno real**, botón de 4fps en el menú de Opciones, el HUD del cliente se oculta con F1, y dos arreglos: el **arrastre** en el editor de HUD ahora mueve los elementos (antes no), y la caja de **vista previa** del crosshair ya no se encima con los botones del minimapa. También se corrigió la tecla Shift derecho en 26.3 (SDL).
+
 ## Novedades 1.4.3
 
 - El aviso de actualización ahora abre la **página de descargas de 4fps** (configurable) en vez del GitHub. Se puede cambiar con el ajuste `FourFps_UpdateUrl`.
