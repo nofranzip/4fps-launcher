@@ -232,12 +232,6 @@ def gold4(f):
     for j,r in enumerate(four):
         for i,ch in enumerate(r):
             if ch=='1': f.putpixel((3+i,5+j),hexc('#451a03'))
-os.makedirs(OUT+'/exclusivas/equipo',exist_ok=True)
-_c=Image.new('RGBA',(64,32),(0,0,0,0)); _f=Image.new('RGBA',(10,16)); gold4(_f)
-_c.paste(_f,(1,1)); _c.paste(_f.transpose(Image.FLIP_LEFT_RIGHT),(12,1))
-for y in range(1,17): _c.putpixel((0,y),_f.getpixel((0,y-1))); _c.putpixel((11,y),_f.getpixel((9,y-1)))
-for x in range(1,11): _c.putpixel((x,0),_f.getpixel((x-1,0))); _c.putpixel((x+10,0),_f.getpixel((x-1,15)))
-_c.save(OUT+'/exclusivas/equipo/4fps dorada.png')
 def camo(f):
     cols=['#3f6212','#4d7c0f','#365314','#57534e']
     for y in range(16):
@@ -270,3 +264,58 @@ def bandana(im):
 head('Bandana azul',bandana)
 pants(hexc('#57534e'),6,'Buzo gris')
 print(len(os.listdir(OUT+'/ropa')),len(os.listdir(OUT+'/capas')))
+
+# ---------- premios por medallas (se desbloquean en el launcher; lista en premios.json)
+import json
+os.makedirs(OUT+'/premios',exist_ok=True)
+def cape_img(painter):
+    im=Image.new('RGBA',(64,32),(0,0,0,0)); f=Image.new('RGBA',(10,16)); painter(f)
+    im.paste(f,(1,1)); im.paste(f.transpose(Image.FLIP_LEFT_RIGHT),(12,1))
+    for y in range(1,17): im.putpixel((0,y),f.getpixel((0,y-1))); im.putpixel((11,y),f.getpixel((9,y-1)))
+    for x in range(1,11): im.putpixel((x,0),f.getpixel((x-1,0))); im.putpixel((x+10,0),f.getpixel((x-1,15)))
+    return im
+def letter(f,pattern,col,ox=3,oy=5):
+    for j,r in enumerate(pattern):
+        for i,ch in enumerate(r):
+            if ch=='1': f.putpixel((ox+i,oy+j),col)
+P=["111","1.1","111","1..","1.."]
+def perma(f):
+    grad('#f59e0b','#78350f')(f); letter(f,P,hexc('#fff7ed'),3,5)
+    for x in range(10): f.putpixel((x,15),hexc('#451a03'))
+def pana1(f):
+    grad('#22c55e','#14532d')(f); letter(f,P,hexc('#f0fdf4'),2,5); letter(f,["1","1","1","1","1"],hexc('#f0fdf4'),6,5)
+def pana2(f):
+    grad('#a855f7','#3b0764')(f); letter(f,P,hexc('#faf5ff'),1,5); letter(f,["11.","..1",".1.","1..","111"],hexc('#faf5ff'),5,5)
+def collector(f):
+    solid(hexc('#18181b'),3)(f)
+    cols=['#f59e0b','#22c55e','#a855f7','#fde68a']
+    for k,c in enumerate(cols):
+        for x in range(2+2*k,4+2*k):
+            for y in range(6,10): f.putpixel((x if x<10 else 9,y),hexc(c))
+    for x in range(10): f.putpixel((x,0),hexc('#fde68a')); f.putpixel((x,15),hexc('#fde68a'))
+premios=[]
+def add_cape(id,name,painter,req,desc):
+    cape_img(painter).save(f'{OUT}/premios/{id}.png')
+    premios.append({'id':id,'nombre':name,'tipo':'capa','archivo':id+'.png','url':URL+id+'.png','requisito':req,'descripcion':desc})
+def add_ropa(id,name,fn,req,desc):
+    im=new(); fn(im); im.save(f'{OUT}/premios/{id}.png')
+    premios.append({'id':id,'nombre':name,'tipo':'ropa','archivo':id+'.png','url':URL+id+'.png','requisito':req,'descripcion':desc})
+URL='https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/'
+add_cape('capa-dorada','Capa 4fps dorada',gold4,{'medalla':'equipo'},'Exclusiva del Equipo 4fps')
+add_cape('capa-permaquistan','Capa Permaquistán',perma,{'medalla':'permaquistan'},'Por jugar en Permaquistán')
+add_cape('capa-panaquistan','Capa Panaquistán',pana1,{'medalla':'panaquistan'},'Por el evento Panaquistán')
+add_cape('capa-panaquistan2','Capa Panaquistán 2',pana2,{'medalla':'panaquistan2'},'Por el evento Panaquistán 2')
+def bandana4(im):
+    fill(im,rows(HEAD_SIDES,0,2),hexc('#b91c1c'),6); fill(im,HEAD_TOP,hexc('#b91c1c'),6)
+    for x in range(40,48): im.putpixel((x,9),hexc('#fafafa') if x in (43,44) else hexc('#7f1d1d'))
+add_ropa('bandana-4fps','Bandana 4fps',bandana4,{'medallas':2},'Consigue 2 medallas')
+def crown(im):
+    gold=hexc('#facc15')
+    for x in range(32,64): im.putpixel((x,8),gold); im.putpixel((x,9),hexc('#eab308'))
+    for x in range(40,48): im.putpixel((x,0),gold); im.putpixel((x,7),gold)
+    for y in range(8): im.putpixel((40,y),gold); im.putpixel((47,y),gold)
+    for x in (34,37,42,45,50,53,58,61): im.putpixel((x,8),hexc('#dc2626') if x%2 else hexc('#2563eb'))
+add_ropa('corona-4fps','Corona 4fps',crown,{'medallas':3},'Consigue 3 medallas')
+add_cape('capa-coleccionista','Capa Coleccionista',collector,{'medallas':4},'Consigue 4 medallas')
+json.dump({'_ayuda':'Lista de premios del launcher 4fps. Ver packaging-4fps/PREMIOS.md','premios':premios},open(OUT+'/premios.json','w',encoding='utf-8'),ensure_ascii=False,indent=2)
+print('premios',len(premios))

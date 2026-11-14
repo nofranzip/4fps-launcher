@@ -23,6 +23,14 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.3
+
+- **RAM automática**: cada instancia calcula su RAM según la RAM del PC y cuántos mods tiene (vanilla 2–3 GB, pocos mods 3 GB, modpack mediano 4–6 GB, grande 6–8 GB), siempre deja 3–4 GB libres para Windows y nunca pasa de 10 GB. Se puede apagar por instancia para elegirla a mano.
+- **Fondos por temporada**: Halloween, Navidad, Año Nuevo, verano y Fiestas Patrias según la fecha; fondos de eventos definidos en [`fondos.json`](fondos.json) ([cómo editarlo](packaging-4fps/FONDOS.md)). Se apaga en Ajustes → Funciones 4fps.
+- **Premios por medallas**: capas y accesorios que se desbloquean al ganar medallas, definidos en [`premios.json`](premios.json) ([cómo editarlo](packaging-4fps/PREMIOS.md)). Lo bloqueado se ve con candado y el requisito.
+- **Modo ligero** para PCs de 8 GB de RAM o menos: sin modo música, menos capas a la vez y solo colores predeterminados.
+- El círculo cromático ya no traba el launcher.
+
 ## Compilar
 Ver `packaging-4fps/COMPILAR.md`. El pack propio de ropa y capas se genera con `packaging-4fps/generar_pack4fps.py`.
 

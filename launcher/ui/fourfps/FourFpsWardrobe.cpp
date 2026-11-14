@@ -2,6 +2,7 @@
 // La prenda pasa a ser la capa exterior predominante: en cada parte del cuerpo que toca la prenda,
 // se borra la segunda capa de la skin original y se pinta la prenda.
 #include "FourFpsShell.h"
+#include "FourFpsFeatures.h"
 #include "SkinRender.h"
 
 #include <QDesktopServices>
@@ -356,12 +357,29 @@ void FourFpsShell::refreshWardrobe()
         delete item;
     }
     const QString q = m_wardrobeSearch->text().trimmed();
-    const auto files = QDir(cosmeticsDir()).entryInfoList({ "*.png" }, QDir::Files, QDir::Name);
+    struct Item {
+        QString path, name;
+        bool locked = false;
+        QString req;
+    };
+    QList<Item> items;
+    {
+        const QStringList owned = ownedBadges();
+        for (const auto& r : fps::rewards()) {
+            if (r.type != "ropa")
+                continue;
+            const QString path = fps::rewardPath(r);
+            if (!path.isEmpty())
+                items << Item{ path, r.name, !fps::rewardUnlocked(r, owned), fps::rewardRequirement(r) };
+        }
+    }
+    for (const auto& fi : QDir(cosmeticsDir()).entryInfoList({ "*.png" }, QDir::Files, QDir::Name))
+        items << Item{ fi.absoluteFilePath(), fi.completeBaseName() };
     int n = 0;
-    for (const auto& fi : files) {
-        if (!q.isEmpty() && !fi.completeBaseName().contains(q, Qt::CaseInsensitive))
+    for (const auto& item : items) {
+        if (!q.isEmpty() && !item.name.contains(q, Qt::CaseInsensitive))
             continue;
-        const QString path = fi.absoluteFilePath();
+        const QString path = item.path;
         if (!m_wardrobeThumbs.contains(path)) {
             QImage c = loadCosmetic(path, true);
             if (c.isNull())
@@ -393,11 +411,25 @@ void FourFpsShell::refreshWardrobe()
         tile->setCursor(Qt::PointingHandCursor);
         tile->setIcon(m_wardrobeThumbs.value(path));
         tile->setIconSize(QSize(96, 96));
-        QString name = fi.completeBaseName();
+        QString name = item.name;
         name.remove(QRegularExpression("-slim$"));
         name.replace('-', ' ');
-        tile->setText(tile->fontMetrics().elidedText(name, Qt::ElideRight, 100));
-        tile->setToolTip(name);
+        tile->setText(tile->fontMetrics().elidedText(item.locked ? item.req : name, Qt::ElideRight, 100));
+        tile->setToolTip(item.locked ? tr("%1 · bloqueado\nNecesitas: %2").arg(name, item.req) : name);
+        if (item.locked) {
+            tile->setCheckable(false);
+            tile->setChecked(false);
+            tile->setIcon(fps::lockedThumb(m_wardrobeThumbs.value(path)));
+            m_wardrobeSelected.removeAll(path);
+            const QString req = item.req;
+            connect(tile, &QToolButton::clicked, this, [this, name, req] {
+                QMessageBox::information(this, tr("Premio bloqueado"),
+                                         tr("\"%1\" está bloqueado.\n\nNecesitas: %2\n\nCuando consigas la medalla se desbloquea solo y te aviso en la campanita.").arg(name, req));
+            });
+            m_wardrobeGrid->addWidget(tile, n / 5, n % 5);
+            n++;
+            continue;
+        }
         connect(tile, &QToolButton::toggled, this, [this, path](bool on) {
             if (on && !m_wardrobeSelected.contains(path))
                 m_wardrobeSelected << path;
@@ -613,6 +645,7 @@ void FourFpsShell::refreshCapes()
         QImage tex;
         QString localPath;
         bool locked = false;
+        QString req;
     };
     QList<Entry> entries;
     int row = 0;
@@ -657,18 +690,19 @@ void FourFpsShell::refreshCapes()
         }
     }
     const int officialCount = entries.size();
-    // capas exclusivas: solo para quien tiene la medalla (pack4fps/exclusivas/<medalla>/*.png)
+    // premios por medallas (premios.json): capas bloqueadas hasta tener la medalla pedida
     const QStringList owned = ownedBadges();
-    const QString exclRoot = QCoreApplication::applicationDirPath() + "/pack4fps/exclusivas";
-    for (const auto& badgeDir : QDir(exclRoot).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name)) {
-        for (const auto& fi : QDir(badgeDir.absoluteFilePath()).entryInfoList({ "*.png" }, QDir::Files, QDir::Name)) {
-            const QImage t = lightCape(QImage(fi.absoluteFilePath()));
-            if (t.isNull())
-                continue;
-            Entry e{ QString(), fi.completeBaseName(), t, fi.absoluteFilePath() };
-            e.locked = !owned.contains(badgeDir.fileName());
-            entries << e;
-        }
+    for (const auto& r : fps::rewards()) {
+        if (r.type != "capa")
+            continue;
+        const QString path = fps::rewardPath(r);
+        const QImage t = path.isEmpty() ? QImage() : lightCape(QImage(path));
+        if (t.isNull())
+            continue;
+        Entry e{ QString(), r.name, t, path };
+        e.locked = !fps::rewardUnlocked(r, owned);
+        e.req = fps::rewardRequirement(r);
+        entries << e;
     }
     const int exclusiveEnd = entries.size();
     // capas muy pesadas (animadas largas / 4K): se apartan a capas/pesadas para que la galeria no se trabe
@@ -681,7 +715,13 @@ void FourFpsShell::refreshCapes()
             }
         }
     }
+    const bool lite = fps::liteMode();
+    int hiddenLite = 0;
     for (const auto& fi : QDir(localCapesDir()).entryInfoList({ "*.png" }, QDir::Files, QDir::Name)) {
+        if (lite && entries.size() - exclusiveEnd >= 24) {  // modo ligero: menos capas a la vez
+            hiddenLite++;
+            continue;
+        }
         const QString key = fi.absoluteFilePath() + "|" + QString::number(fi.lastModified().toMSecsSinceEpoch());
         QImage t = s_capeTexCache.value(key);
         if (t.isNull()) {
@@ -700,7 +740,7 @@ void FourFpsShell::refreshCapes()
 
     // catalogo oficial: lista de MineSkin, imagenes desde los servidores de Mojang (no se incluyen en el launcher)
     const int localEnd = entries.size();
-    if (!m_officialLoaded && !m_officialLoading) {
+    if (!lite && !m_officialLoaded && !m_officialLoading) {
         m_officialLoading = true;
         QNetworkRequest req{ QUrl(QStringLiteral("https://api.mineskin.org/v2/capes")) };
         req.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("4fps-launcher/1.0"));
@@ -724,7 +764,7 @@ void FourFpsShell::refreshCapes()
             refreshCapes();
         });
     }
-    for (const auto& oc : m_officialCapes) {
+    for (const auto& oc : lite ? decltype(m_officialCapes)() : m_officialCapes) {
         const QString url = oc.second;
         QImage t = m_capeTextures.value(url);
         if (t.isNull() && !m_capeDownloads.contains(url) && !m_capeFailed.contains(url)) {
@@ -760,7 +800,7 @@ void FourFpsShell::refreshCapes()
         if (i == officialCount && exclusiveEnd > officialCount) {
             if (col != 0)
                 row++;
-            section(tr("EXCLUSIVAS · solo para el Equipo 4fps"));
+            section(tr("PREMIOS POR MEDALLAS · se desbloquean solos al ganar la medalla"));
             col = 0;
         }
         if (i == exclusiveEnd) {
@@ -806,16 +846,26 @@ void FourFpsShell::refreshCapes()
         tile->setIconSize(QSize(140, 140));
         QString label = (!isLocal && e.id == current && premium) ? e.name + "  ·  " + tr("En uso") : e.name;
         if (e.locked) {
-            label = tr("Bloqueada");
-            tile->setEnabled(false);
-            QPixmap pm = tile->icon().pixmap(140, 140);
-            QPainter lp(&pm);
-            lp.fillRect(pm.rect(), QColor(13, 13, 14, 150));
-            lp.end();
-            tile->setIcon(pm);
+            label = e.req;
+            tile->setCheckable(false);
+            tile->setChecked(false);
+            tile->setIcon(fps::lockedThumb(tile->icon().pixmap(140, 140)));
         }
         tile->setText(tile->fontMetrics().elidedText(label, Qt::ElideRight, 140));
-        tile->setToolTip(e.locked ? tr("%1 · exclusiva del Equipo 4fps (canjea el código del equipo en Perfil)").arg(e.name) : e.name);
+        tile->setToolTip(e.locked ? tr("%1 · bloqueada\nNecesitas: %2").arg(e.name, e.req) : e.name);
+        if (e.locked) {
+            const QString n = e.name, req = e.req;
+            connect(tile, &QToolButton::clicked, this, [this, n, req] {
+                QMessageBox::information(this, tr("Premio bloqueado"),
+                                         tr("\"%1\" está bloqueada.\n\nNecesitas: %2\n\nCuando consigas la medalla se desbloquea sola y te aviso en la campanita.").arg(n, req));
+            });
+            m_capesGrid->addWidget(tile, row, col);
+            if (++col == 4) {
+                col = 0;
+                row++;
+            }
+            continue;
+        }
         group->addButton(tile);
         const QString id = e.id, name = e.name, path = e.localPath;
         const QImage tex = e.tex;
@@ -842,7 +892,12 @@ void FourFpsShell::refreshCapes()
         row++;
     if (localEnd == exclusiveEnd)
         section(tr("No tienes capas personales todavía. Usa \"Importar capas (PNG)\"."));
-    if (entries.size() == localEnd) {
+    if (hiddenLite > 0)
+        section(tr("Modo ligero (PC de 8 GB o menos): se muestran 24 capas; %n más están en tu carpeta de capas.", "", hiddenLite));
+    if (lite) {
+        section(tr("CATÁLOGO OFICIAL DE MINECRAFT · oculto en modo ligero para que tu PC no se trabe."));
+    }
+    if (!lite && entries.size() == localEnd) {
         if (col != 0)
             row++;
         section(m_officialLoading ? tr("CATÁLOGO OFICIAL DE MINECRAFT · cargando...")

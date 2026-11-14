@@ -47,6 +47,10 @@
 #include <QToolButton>
 #include <QUrlQuery>
 #include <QUuid>
+#include <QDate>
+#include <QNetworkRequest>
+#include <QRandomGenerator>
+#include <QRadialGradient>
 #include <QVBoxLayout>
 
 #include "Application.h"
@@ -1175,13 +1179,11 @@ class ColorWheel : public QWidget {
     {
         color = c;
         value = qMax(40, c.value());
-        m_cache = QImage();
         update();
     }
     void setValue(int v)
     {
         value = v;
-        m_cache = QImage();
         int h, s, vv;
         color.getHsv(&h, &s, &vv);
         color = QColor::fromHsv(qMax(0, h), s, value);
@@ -1207,7 +1209,7 @@ class ColorWheel : public QWidget {
                     double ang = std::atan2(-dy, dx) * 180.0 / M_PI;
                     if (ang < 0)
                         ang += 360;
-                    QColor c = QColor::fromHsv(int(ang) % 360, int(qMin(1.0, dist / r) * 255), value);
+                    QColor c = QColor::fromHsv(int(ang) % 360, int(qMin(1.0, dist / r) * 255), 255);
                     if (dist > r - 1)
                         c.setAlpha(int((r - dist) * 255));
                     m_cache.setPixelColor(x, y, c);
@@ -1216,6 +1218,12 @@ class ColorWheel : public QWidget {
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         p.drawImage(0, 0, m_cache);
+        // el brillo se aplica oscureciendo encima (la rueda se dibuja una sola vez)
+        if (value < 255) {
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(0, 0, 0, 255 - value));
+            p.drawEllipse(QRectF(0, 0, d, d));
+        }
         // marcador
         int h, s, v;
         color.getHsv(&h, &s, &v);
@@ -1229,6 +1237,16 @@ class ColorWheel : public QWidget {
         p.drawEllipse(pt, 8, 8);
     }
     void mousePressEvent(QMouseEvent* e) override { pick(e->position()); }
+    void mouseReleaseEvent(QMouseEvent*) override
+    {
+        if (released)
+            released();
+    }
+
+   public:
+    std::function<void()> released;
+
+   protected:
     void mouseMoveEvent(QMouseEvent* e) override
     {
         if (e->buttons() & Qt::LeftButton)
@@ -1253,6 +1271,8 @@ class ColorWheel : public QWidget {
 };
 }  // namespace
 
+static bool g_bgActive = false;  // hay imagen/tema detrás: las páginas se vuelven transparentes
+
 void applyAccent(const QColor& preview)
 {
     QString& base = baseStyle();
@@ -1262,13 +1282,14 @@ void applyAccent(const QColor& preview)
         return;
     const QColor a = preview.isValid() ? preview : QColor(setting(cfg::Accent).toString());
     // con imagen de fondo, la parte central se vuelve transparente (las tarjetas siguen sólidas)
-    const QString bgRules = setting(cfg::BgImage).toString().isEmpty()
+    const QString bgRules = !g_bgActive
                                 ? QString()
                                 : QStringLiteral("\nQStackedWidget#fpsStack, QStackedWidget#fpsStack QWidget#fpsPage, QStackedWidget#fpsStack QWidget#fpsGridHost,"
                                                  " QStackedWidget#fpsStack QScrollArea, QStackedWidget#fpsStack QScrollArea > QWidget > QWidget"
                                                  " { background: transparent; }\n");
     if (!a.isValid() || a == QColor(Qt::white)) {
-        qApp->setStyleSheet(base + bgRules);
+        if (qApp->styleSheet() != base + bgRules)
+            qApp->setStyleSheet(base + bgRules);
         return;
     }
     // texto sobre el color: negro si el color es claro, blanco si es oscuro
@@ -1283,7 +1304,8 @@ void applyAccent(const QColor& preview)
     q.replace(QRegularExpression("(border-color:\\s*)#e4e4e7", QRegularExpression::CaseInsensitiveOption), "\\1" + hover);
     q.replace(QRegularExpression("(background(?:-color)?:\\s*)#d4d4d8", QRegularExpression::CaseInsensitiveOption), "\\1" + press);
     q.replace(QRegularExpression("((?<![\\w-])color:\\s*|selection-color:\\s*)#0d0d0e", QRegularExpression::CaseInsensitiveOption), "\\1" + on);
-    qApp->setStyleSheet(q + bgRules);
+    if (qApp->styleSheet() != q + bgRules)  // no repinta todo si no cambió nada
+        qApp->setStyleSheet(q + bgRules);
 }
 
 void openAccentPicker(QWidget* parent)
@@ -1301,7 +1323,8 @@ void openAccentPicker(QWidget* parent)
     wheel->setColor(original.isValid() ? original : QColor(Qt::white));
     row->addWidget(wheel);
     auto* side = new QVBoxLayout();
-    side->addWidget(new QLabel(QObject::tr("Brillo"), &dlg));
+    auto* brightLabel = new QLabel(QObject::tr("Brillo"), &dlg);
+    side->addWidget(brightLabel);
     auto* bright = new QSlider(Qt::Horizontal, &dlg);
     bright->setRange(40, 255);
     bright->setValue(wheel->value);
@@ -1357,6 +1380,17 @@ void openAccentPicker(QWidget* parent)
     dimRow->addWidget(dim, 1);
     bgv->addLayout(dimRow);
     v->addWidget(bgBox);
+    if (liteMode()) {
+        // PC de 8 GB o menos: solo los colores predeterminados (la rueda y la imagen de fondo gastan más)
+        wheel->hide();
+        brightLabel->hide();
+        bright->hide();
+        hex->hide();
+        bgBox->hide();
+        intro->setText(QObject::tr("Modo ligero: tu PC tiene 8 GB de RAM o menos, así que solo puedes usar los colores predeterminados. "
+                                   "(Se quita en Ajustes → Funciones 4fps → \"Ajustar el launcher a mi PC\").")
+                       );
+    }
     const QString oldBg = setting(cfg::BgImage).toString();
     const int oldDim = setting(cfg::BgDim).toInt();
     auto bgPath = std::make_shared<QString>(oldBg);
@@ -1374,16 +1408,22 @@ void openAccentPicker(QWidget* parent)
         const QString target = APPLICATION->dataRoot() + "/fondo-launcher.png";
         img.scaled(QSize(2560, 1440), Qt::KeepAspectRatio, Qt::SmoothTransformation).save(target, "PNG");
         *bgPath = target;
-        setSetting(cfg::BgImage, QString());  // fuerza recarga
-        setSetting(cfg::BgImage, target);      // vista previa en vivo
+        setSettingQuiet(cfg::BgImage, QString());  // fuerza recarga
+        emit Bus::get()->backgroundChanged();
+        setSettingQuiet(cfg::BgImage, target);  // vista previa en vivo
+        emit Bus::get()->backgroundChanged();
         refreshBgName();
     });
     QObject::connect(bgClear, &QPushButton::clicked, &dlg, [bgPath, refreshBgName] {
         bgPath->clear();
-        setSetting(cfg::BgImage, QString());
+        setSettingQuiet(cfg::BgImage, QString());
+        emit Bus::get()->backgroundChanged();
         refreshBgName();
     });
-    QObject::connect(dim, &QSlider::valueChanged, &dlg, [](int val) { setSetting(cfg::BgDim, val); });
+    QObject::connect(dim, &QSlider::valueChanged, &dlg, [](int val) {
+        setSettingQuiet(cfg::BgDim, val);
+        emit Bus::get()->backgroundChanged();
+    });
 
     auto* bb = new QDialogButtonBox(&dlg);
     auto* reset = bb->addButton(QObject::tr("Volver al blanco"), QDialogButtonBox::ResetRole);
@@ -1392,12 +1432,22 @@ void openAccentPicker(QWidget* parent)
     v->addWidget(bb);
 
     auto current = std::make_shared<QColor>(wheel->color);
-    auto show = [swatch, hex, current](const QColor& c, bool updateHex) {
+    // la vista previa en todo el launcher es pesada: se aplica cuando dejas de mover la rueda (antes se aplicaba
+    // en cada pixel que movías el mouse y se trababa todo)
+    auto* previewTimer = new QTimer(&dlg);
+    previewTimer->setSingleShot(true);
+    previewTimer->setInterval(180);
+    QObject::connect(previewTimer, &QTimer::timeout, &dlg, [current] { applyAccent(*current); });
+    wheel->released = [previewTimer, current] {
+        previewTimer->stop();
+        applyAccent(*current);
+    };
+    auto show = [swatch, hex, current, previewTimer](const QColor& c, bool updateHex) {
         *current = c;
         swatch->setStyleSheet(QStringLiteral("background:%1;border-radius:8px;").arg(c.name()));
         if (updateHex)
             hex->setText(c.name());
-        applyAccent(c);  // vista previa en vivo
+        previewTimer->start();  // vista previa en vivo (con pausa)
     };
     wheel->changed = [show](const QColor& c) { show(c, true); };
     QObject::connect(bright, &QSlider::valueChanged, &dlg, [wheel](int val) { wheel->setValue(val); });
@@ -1430,38 +1480,254 @@ void openAccentPicker(QWidget* parent)
     QObject::connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
     QObject::connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
     show(*current, true);
-    if (dlg.exec() == QDialog::Accepted) {
-        setSetting(cfg::Accent, current->name());
-        applyAccent();
+    const int result = dlg.exec();
+    previewTimer->stop();
+    if (result == QDialog::Accepted) {
+        setSettingQuiet(cfg::Accent, current->name());
+        setSettingQuiet(cfg::BgImage, *bgPath);
     } else {
         // cancelar: vuelve el color y el fondo de antes
-        setSetting(cfg::BgImage, oldBg);
-        setSetting(cfg::BgDim, oldDim);
-        applyAccent();
+        setSettingQuiet(cfg::BgImage, oldBg);
+        setSettingQuiet(cfg::BgDim, oldDim);
     }
+    emit Bus::get()->backgroundChanged();
+    applyAccent();
 }
 
 // ================================================================= fondo de la parte central
 namespace {
+
+struct EventBg {
+    QString name, image, color;
+    int dim = 55;
+};
+
+QString seasonsCache()
+{
+    return APPLICATION->dataRoot() + "/fondos.json";
+}
+
+// evento activo hoy según fondos.json (bajado del GitHub)
+EventBg activeEvent()
+{
+    QFile f(seasonsCache());
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const auto doc = QJsonDocument::fromJson(f.readAll());
+    const QDate today = QDate::currentDate();
+    for (const auto& v : doc.object().value("eventos").toArray()) {
+        const auto o = v.toObject();
+        const QDate from = QDate::fromString(o.value("desde").toString(), Qt::ISODate);
+        const QDate to = QDate::fromString(o.value("hasta").toString(), Qt::ISODate);
+        if (!from.isValid() || !to.isValid() || today < from || today > to)
+            continue;
+        EventBg e;
+        e.name = o.value("nombre").toString();
+        e.color = o.value("color").toString("#a1a1aa");
+        e.dim = qBound(0, o.value("oscurecer").toInt(60), 90);
+        const QString url = o.value("imagen").toString();
+        if (!url.isEmpty()) {
+            const QString file = APPLICATION->dataRoot() + "/fondos/" + QCryptographicHash::hash(url.toUtf8(), QCryptographicHash::Sha1).toHex() + ".png";
+            if (QFile::exists(file))
+                e.image = file;
+        }
+        return e;
+    }
+    return {};
+}
+
+QString seasonByDate(const QDate& d)
+{
+    const int m = d.month(), day = d.day();
+    if ((m == 12 && day >= 27) || (m == 1 && day <= 3))
+        return "anonuevo";
+    if (m == 12)
+        return "navidad";
+    if (m == 10)
+        return "halloween";
+    if (m == 9 && day >= 10 && day <= 20)
+        return "fiestaspatrias";
+    if (m == 1 || m == 2 || (m == 3 && day <= 20))
+        return "verano";  // verano en Chile
+    return "normal";
+}
+
+QString seasonLabel(const QString& s)
+{
+    if (s == "halloween")
+        return QObject::tr("Halloween");
+    if (s == "navidad")
+        return QObject::tr("Navidad");
+    if (s == "anonuevo")
+        return QObject::tr("Año Nuevo");
+    if (s == "verano")
+        return QObject::tr("Verano");
+    if (s == "fiestaspatrias")
+        return QObject::tr("Fiestas Patrias");
+    return {};
+}
+
+// dibuja el tema de temporada (suave, para que el texto se siga leyendo bien)
+void paintSeason(QPainter& p, const QSize& sz, const QString& season, const QColor& eventColor)
+{
+    const int w = sz.width(), h = sz.height();
+    p.setRenderHint(QPainter::Antialiasing);
+    p.fillRect(0, 0, w, h, QColor("#0d0d0e"));
+    QRandomGenerator rnd(4);
+    auto glow = [&](QPointF c, qreal r, QColor col) {
+        QRadialGradient g(c, r);
+        g.setColorAt(0, col);
+        col.setAlpha(0);
+        g.setColorAt(1, col);
+        p.fillRect(0, 0, w, h, g);
+    };
+    if (season == "halloween") {
+        glow(QPointF(w * 0.85, h * 1.05), h * 0.9, QColor(249, 115, 22, 70));
+        glow(QPointF(w * 0.1, -h * 0.1), h * 0.8, QColor(126, 34, 206, 60));
+        // luna
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(254, 243, 199, 22));
+        p.drawEllipse(QPointF(w * 0.62, h * 0.13), h * 0.06, h * 0.06);
+        // murciélagos
+        p.setPen(QPen(QColor(10, 10, 10, 170), 3, Qt::SolidLine, Qt::RoundCap));
+        for (int i = 0; i < 9; i++) {
+            const qreal x = rnd.bounded(w), y = rnd.bounded(h / 2), s = 8 + rnd.bounded(14);
+            QPainterPath bat;
+            bat.moveTo(x - s, y - s * 0.3);
+            bat.quadTo(x - s * 0.5, y - s * 0.6, x, y);
+            bat.quadTo(x + s * 0.5, y - s * 0.6, x + s, y - s * 0.3);
+            p.drawPath(bat);
+        }
+        // calabazas abajo
+        for (int i = 0; i < 4; i++) {
+            const qreal r = 22 + rnd.bounded(18), x = w * (0.08 + 0.26 * i) + rnd.bounded(40), y = h - r * 0.6;
+            p.setPen(Qt::NoPen);
+            p.setBrush(QColor(234, 88, 12, 55));
+            p.drawEllipse(QPointF(x, y), r * 1.2, r);
+            p.setBrush(QColor(13, 13, 14, 120));
+            p.drawEllipse(QPointF(x - r * 0.4, y - r * 0.2), r * 0.15, r * 0.15);
+            p.drawEllipse(QPointF(x + r * 0.4, y - r * 0.2), r * 0.15, r * 0.15);
+        }
+    } else if (season == "navidad") {
+        glow(QPointF(w * 0.5, -h * 0.2), h, QColor(22, 101, 52, 70));
+        glow(QPointF(w * 0.9, h * 1.1), h * 0.7, QColor(185, 28, 28, 55));
+        p.setPen(Qt::NoPen);
+        for (int i = 0; i < 140; i++) {
+            const qreal r = 1 + rnd.bounded(3.0);
+            p.setBrush(QColor(255, 255, 255, 40 + rnd.bounded(80)));
+            p.drawEllipse(QPointF(rnd.bounded(w), rnd.bounded(h)), r, r);
+        }
+        // nieve acumulada
+        QPainterPath snow;
+        snow.moveTo(0, h);
+        for (int x = 0; x <= w; x += 40)
+            snow.lineTo(x, h - 10 - rnd.bounded(14));
+        snow.lineTo(w, h);
+        p.setBrush(QColor(244, 244, 245, 35));
+        p.drawPath(snow);
+    } else if (season == "anonuevo") {
+        glow(QPointF(w * 0.5, h * 0.4), h, QColor(30, 58, 138, 60));
+        const QList<QColor> cols = { QColor("#facc15"), QColor("#f472b6"), QColor("#22d3ee"), QColor("#a855f7"), QColor("#f4f4f5") };
+        p.setPen(Qt::NoPen);
+        for (int i = 0; i < 110; i++) {
+            QColor c = cols[rnd.bounded(cols.size())];
+            c.setAlpha(60 + rnd.bounded(70));
+            p.save();
+            p.translate(rnd.bounded(w), rnd.bounded(h));
+            p.rotate(rnd.bounded(180));
+            p.fillRect(QRectF(-4, -2, 8, 4), c);
+            p.restore();
+        }
+        // fuegos artificiales
+        for (int k = 0; k < 3; k++) {
+            const QPointF c(w * (0.2 + 0.3 * k), h * (0.2 + 0.1 * (k % 2)));
+            QColor col = cols[k];
+            col.setAlpha(70);
+            p.setPen(QPen(col, 2, Qt::SolidLine, Qt::RoundCap));
+            for (int a = 0; a < 16; a++) {
+                const qreal ang = a * M_PI / 8, r1 = 18, r2 = 55;
+                p.drawLine(c + QPointF(std::cos(ang) * r1, std::sin(ang) * r1), c + QPointF(std::cos(ang) * r2, std::sin(ang) * r2));
+            }
+        }
+    } else if (season == "verano") {
+        QLinearGradient g(0, 0, 0, h);
+        g.setColorAt(0, QColor(249, 115, 22, 55));
+        g.setColorAt(0.45, QColor(219, 39, 119, 25));
+        g.setColorAt(1, QColor(13, 13, 14, 0));
+        p.fillRect(0, 0, w, h, g);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(253, 224, 71, 45));
+        p.drawEllipse(QPointF(w * 0.78, h * 0.3), h * 0.12, h * 0.12);
+        // olas
+        p.setPen(QPen(QColor(34, 211, 238, 40), 3));
+        for (int k = 0; k < 4; k++) {
+            QPainterPath wave;
+            const qreal y = h * (0.72 + 0.07 * k);
+            wave.moveTo(0, y);
+            for (int x = 0; x <= w; x += 60)
+                wave.quadTo(x + 15, y - 8, x + 30, y), wave.quadTo(x + 45, y + 8, x + 60, y);
+            p.drawPath(wave);
+        }
+    } else if (season == "fiestaspatrias") {
+        // bandera chilena muy suave
+        p.fillRect(QRectF(0, 0, w, h / 2.0), QColor(244, 244, 245, 14));
+        p.fillRect(QRectF(0, h / 2.0, w, h / 2.0), QColor(213, 43, 30, 30));
+        p.fillRect(QRectF(0, 0, h / 2.0, h / 2.0), QColor(0, 57, 166, 45));
+        QPainterPath star;
+        const QPointF c(h / 4.0, h / 4.0);
+        for (int i = 0; i < 10; i++) {
+            const qreal r = i % 2 ? h * 0.035 : h * 0.09, a = -M_PI / 2 + i * M_PI / 5;
+            const QPointF pt(c.x() + std::cos(a) * r, c.y() + std::sin(a) * r);
+            i == 0 ? star.moveTo(pt) : star.lineTo(pt);
+        }
+        star.closeSubpath();
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(255, 255, 255, 60));
+        p.drawPath(star);
+    } else if (season == "evento") {
+        QColor c = eventColor.isValid() ? eventColor : QColor("#a1a1aa");
+        c.setAlpha(60);
+        glow(QPointF(w * 0.5, h * 0.2), h, c);
+        c.setAlpha(35);
+        glow(QPointF(w * 0.9, h), h * 0.7, c);
+    }
+}
+
 class BackgroundHost : public QWidget {
    public:
     QPixmap image;
-    QString loaded;
+    QString loaded, theme;
+    EventBg event;
     bool initialized = false;
     QPixmap scaled;
     QSize scaledFor;
+    QString scaledTheme;
     void reload()
     {
-        const QString path = setting(cfg::BgImage).toString();
+        // prioridad: tu imagen > evento (fondos.json) > temporada > gris normal
+        const QString user = setting(cfg::BgImage).toString();
+        event = EventBg();
+        QString t, path = user;
+        if (user.isEmpty()) {
+            t = currentSeason();
+            if (t == "evento") {
+                event = activeEvent();
+                path = event.image;
+            }
+        }
+        const bool wasActive = g_bgActive;
+        g_bgActive = !path.isEmpty() || (!t.isEmpty() && t != "normal");
         if (path != loaded || !initialized) {
-            const bool changedPresence = !initialized || path.isEmpty() != loaded.isEmpty();
-            initialized = true;
             loaded = path;
             image = path.isEmpty() ? QPixmap() : QPixmap(path);
             scaled = QPixmap();
-            if (changedPresence)
-                applyAccent();  // activa/desactiva la transparencia de las páginas
         }
+        if (t != theme)
+            scaled = QPixmap();
+        theme = t;
+        if (!initialized || wasActive != g_bgActive)
+            applyAccent();  // activa/desactiva la transparencia de las páginas
+        initialized = true;
         update();
     }
 
@@ -1470,18 +1736,102 @@ class BackgroundHost : public QWidget {
     {
         QPainter p(this);
         p.fillRect(rect(), QColor("#0d0d0e"));
-        if (image.isNull())
+        if (!image.isNull()) {
+            if (scaled.isNull() || scaledFor != size()) {
+                scaled = image.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+                scaledFor = size();
+            }
+            p.drawPixmap((width() - scaled.width()) / 2, (height() - scaled.height()) / 2, scaled);
+            const int dim = loaded == setting(cfg::BgImage).toString() ? qBound(0, setting(cfg::BgDim).toInt(), 90) : event.dim;
+            p.fillRect(rect(), QColor(13, 13, 14, dim * 255 / 100));
+        } else if (!theme.isEmpty() && theme != "normal") {
+            if (scaled.isNull() || scaledFor != size() || scaledTheme != theme) {
+                scaled = QPixmap(size());
+                QPainter sp(&scaled);
+                paintSeason(sp, size(), theme, QColor(event.color));
+                scaledFor = size();
+                scaledTheme = theme;
+            }
+            p.drawPixmap(0, 0, scaled);
+        } else {
             return;
-        if (scaled.isNull() || scaledFor != size()) {
-            scaled = image.scaled(size(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-            scaledFor = size();
         }
-        p.drawPixmap((width() - scaled.width()) / 2, (height() - scaled.height()) / 2, scaled);
-        const int dim = qBound(0, setting(cfg::BgDim).toInt(), 90);
-        p.fillRect(rect(), QColor(13, 13, 14, dim * 255 / 100));
+        // etiqueta chiquita abajo a la derecha
+        const QString label = theme == "evento" ? QObject::tr("Evento: %1").arg(event.name) : seasonLabel(theme);
+        if (!label.isEmpty()) {
+            QFont f = font();
+            f.setPointSizeF(f.pointSizeF() * 0.85);
+            p.setFont(f);
+            p.setPen(QColor(244, 244, 245, 90));
+            p.drawText(rect().adjusted(0, 0, -12, -8), Qt::AlignRight | Qt::AlignBottom, label);
+        }
     }
 };
+
+// baja fondos.json y las imágenes de eventos (solo desde GitHub)
+void syncSeasons(QPointer<BackgroundHost> host)
+{
+    const QUrl url(setting(cfg::SeasonUrl).toString());
+    if (!url.isValid() || url.scheme() != "https")
+        return;
+    QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    req.setTransferTimeout(15000);
+    auto* reply = APPLICATION->network()->get(req);
+    QObject::connect(reply, &QNetworkReply::finished, reply, [reply, host] {
+        reply->deleteLater();
+        if (reply->error() != QNetworkReply::NoError)
+            return;
+        const QByteArray data = reply->readAll();
+        const auto doc = QJsonDocument::fromJson(data);
+        if (!doc.isObject())
+            return;
+        QFile f(seasonsCache());
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(data);
+        f.close();
+        QDir().mkpath(APPLICATION->dataRoot() + "/fondos");
+        const QDate today = QDate::currentDate();
+        for (const auto& v : doc.object().value("eventos").toArray()) {
+            const auto o = v.toObject();
+            const QDate to = QDate::fromString(o.value("hasta").toString(), Qt::ISODate);
+            const QUrl u(o.value("imagen").toString());
+            const QString hostName = u.host().toLower();
+            if (!to.isValid() || to < today || u.scheme() != "https" || !(hostName == "raw.githubusercontent.com" || hostName == "github.com"))
+                continue;
+            const QString file = APPLICATION->dataRoot() + "/fondos/" + QCryptographicHash::hash(u.toString().toUtf8(), QCryptographicHash::Sha1).toHex() + ".png";
+            if (QFile::exists(file))
+                continue;
+            QNetworkRequest ir(u);
+            ir.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+            ir.setTransferTimeout(30000);
+            auto* rep = APPLICATION->network()->get(ir);
+            QObject::connect(rep, &QNetworkReply::finished, rep, [rep, file, host] {
+                rep->deleteLater();
+                QImage img;
+                if (rep->error() == QNetworkReply::NoError && img.loadFromData(rep->readAll()))
+                    img.scaled(QSize(2560, 1440), Qt::KeepAspectRatio, Qt::SmoothTransformation).save(file, "PNG");
+                if (host)
+                    host->reload();
+            });
+        }
+        if (host)
+            host->reload();
+    });
+}
 }  // namespace
+
+QString currentSeason()
+{
+    if (!enabled(cfg::SeasonalBg))
+        return QStringLiteral("normal");
+    const QString o = setting(cfg::SeasonOverride).toString();
+    if (!o.isEmpty() && o != "auto")
+        return o;
+    if (!activeEvent().name.isEmpty())
+        return QStringLiteral("evento");
+    return seasonByDate(QDate::currentDate());
+}
 
 QWidget* buildBackgroundHost(QWidget* parent, QWidget* content)
 {
@@ -1492,7 +1842,14 @@ QWidget* buildBackgroundHost(QWidget* parent, QWidget* content)
     l->setContentsMargins(0, 0, 0, 0);
     l->addWidget(content);
     QObject::connect(Bus::get(), &Bus::settingsChanged, host, [host] { host->reload(); });
+    QObject::connect(Bus::get(), &Bus::backgroundChanged, host, [host] { host->reload(); });
     QTimer::singleShot(0, host, [host] { host->reload(); });
+    QTimer::singleShot(3000, host, [host] { syncSeasons(host); });
+    // revisa la fecha cada hora (por si el launcher queda abierto al cambiar de mes)
+    auto* t = new QTimer(host);
+    t->setInterval(60 * 60 * 1000);
+    QObject::connect(t, &QTimer::timeout, host, [host] { host->reload(); });
+    t->start();
     return host;
 }
 

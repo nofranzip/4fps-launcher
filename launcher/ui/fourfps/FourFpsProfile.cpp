@@ -29,6 +29,12 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+#include <QCoreApplication>
+#include <QDir>
+#include <QNetworkReply>
+#include <QNetworkRequest>
+#include <QPointer>
+
 #include "Application.h"
 #include "minecraft/auth/AccountData.h"
 #include "minecraft/auth/AccountList.h"
@@ -200,6 +206,7 @@ bool FourFpsShell::grantBadge(const QString& id, const QString& reason)
     updateBell();
     if (m_profilePage && m_stack && m_stack->currentWidget() == m_profilePage)
         refreshProfile();
+    QTimer::singleShot(400, this, [this] { checkRewards(true); });  // ¿desbloqueó algún premio?
     return true;
 }
 
@@ -231,6 +238,211 @@ void FourFpsShell::redeemCode(const QString& codeIn)
         return;
     }
     QMessageBox::warning(this, tr("Canjear código"), tr("Ese código no existe o está mal escrito."));
+}
+
+// ------------------------------------------------------------------ premios por medallas
+namespace fps {
+namespace {
+QString rewardsCache()
+{
+    return APPLICATION->dataRoot() + "/premios.json";
+}
+QString rewardsBundled()
+{
+    return QCoreApplication::applicationDirPath() + "/pack4fps/premios.json";
+}
+QJsonArray readRewardsArray(const QString& file)
+{
+    QFile f(file);
+    if (!f.open(QIODevice::ReadOnly))
+        return {};
+    const auto doc = QJsonDocument::fromJson(f.readAll());
+    return doc.isArray() ? doc.array() : doc.object().value("premios").toArray();
+}
+}  // namespace
+
+QList<Reward> rewards()
+{
+    QJsonArray arr = readRewardsArray(rewardsCache());
+    if (arr.isEmpty())
+        arr = readRewardsArray(rewardsBundled());
+    QList<Reward> out;
+    for (const auto& v : arr) {
+        const auto o = v.toObject();
+        Reward r;
+        r.id = o.value("id").toString();
+        r.name = o.value("nombre").toString(r.id);
+        r.type = o.value("tipo").toString("capa").toLower();
+        r.file = QFileInfo(o.value("archivo").toString()).fileName();  // solo el nombre, nunca rutas
+        r.url = o.value("url").toString();
+        r.desc = o.value("descripcion").toString();
+        const auto req = o.value("requisito").toObject();
+        r.medal = req.value("medalla").toString();
+        r.medals = req.value("medallas").toInt();
+        if (!r.id.isEmpty() && !r.file.isEmpty() && (r.type == "capa" || r.type == "ropa"))
+            out << r;
+    }
+    return out;
+}
+
+QString rewardPath(const Reward& r)
+{
+    const QString dl = APPLICATION->dataRoot() + "/premios/" + r.file;
+    if (QFile::exists(dl))
+        return dl;
+    const QString bundled = QCoreApplication::applicationDirPath() + "/pack4fps/premios/" + r.file;
+    return QFile::exists(bundled) ? bundled : QString();
+}
+
+bool rewardUnlocked(const Reward& r, const QStringList& owned)
+{
+    if (!r.medal.isEmpty() && !owned.contains(r.medal))
+        return false;
+    if (r.medals > 0 && owned.size() < r.medals)
+        return false;
+    return true;
+}
+
+QString rewardRequirement(const Reward& r)
+{
+    QStringList parts;
+    if (!r.medal.isEmpty()) {
+        const BadgeDef* b = badgeById(r.medal);
+        parts << QObject::tr("Medalla %1").arg(b ? QString::fromUtf8(b->name) : r.medal);
+    }
+    if (r.medals > 0)
+        parts << (r.medals == 1 ? QObject::tr("1 medalla") : QObject::tr("%1 medallas").arg(r.medals));
+    return parts.isEmpty() ? QObject::tr("Libre") : parts.join(QObject::tr(" y "));
+}
+
+QPixmap lockedThumb(const QPixmap& src)
+{
+    QPixmap pm = src;
+    if (pm.isNull())
+        return pm;
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.fillRect(pm.rect(), QColor(13, 13, 14, 160));
+    // candado
+    const qreal s = qMin(pm.width(), pm.height()) * 0.28;
+    const QPointF c(pm.width() / 2.0, pm.height() / 2.0);
+    QRectF body(c.x() - s / 2, c.y() - s * 0.1, s, s * 0.75);
+    p.setPen(QPen(QColor("#e4e4e7"), qMax<qreal>(2, s * 0.14)));
+    p.setBrush(Qt::NoBrush);
+    p.drawArc(QRectF(c.x() - s * 0.32, c.y() - s * 0.62, s * 0.64, s * 0.9), 0, 180 * 16);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor("#e4e4e7"));
+    p.drawRoundedRect(body, s * 0.12, s * 0.12);
+    p.setBrush(QColor("#18181b"));
+    p.drawEllipse(QPointF(c.x(), body.center().y() - s * 0.05), s * 0.09, s * 0.09);
+    p.drawRect(QRectF(c.x() - s * 0.04, body.center().y(), s * 0.08, s * 0.2));
+    return pm;
+}
+}  // namespace fps
+
+void FourFpsShell::checkRewards(bool popup)
+{
+    QJsonObject o = loadProfile();
+    const QStringList owned = ownedBadges();
+    QJsonArray told = o.value("premiosAvisados").toArray();
+    QStringList toldIds;
+    for (const auto& v : told)
+        toldIds << v.toString();
+    QStringList fresh;
+    QJsonArray notes = o.value("notifications").toArray();
+    const QString now = QDateTime::currentDateTime().toString(Qt::ISODate);
+    for (const auto& r : fps::rewards()) {
+        if (toldIds.contains(r.id) || !fps::rewardUnlocked(r, owned))
+            continue;
+        told.append(r.id);
+        fresh << r.name;
+        const QString where = r.type == "capa" ? tr("Ropa → Capas") : tr("Ropa");
+        notes.prepend(QJsonObject{ { "badge", r.medal.isEmpty() ? (owned.isEmpty() ? QStringLiteral("bienvenida") : owned.last()) : r.medal },
+                                   { "text", tr("¡Desbloqueaste %1! Póntelo en %2").arg(r.name, where) },
+                                   { "date", now },
+                                   { "read", false } });
+    }
+    if (fresh.isEmpty())
+        return;
+    while (notes.size() > 50)
+        notes.removeLast();
+    o["notifications"] = notes;
+    o["premiosAvisados"] = told;
+    saveProfile(o);
+    updateBell();
+    if (m_capesGrid)
+        refreshCapes();
+    if (m_wardrobeGrid)
+        refreshWardrobe();
+    if (popup) {
+        auto* box = new QMessageBox(QMessageBox::Information, tr("¡Premio desbloqueado!"),
+                                    tr("Con tus medallas desbloqueaste:\n\n• %1\n\nLo encuentras en la sección Ropa.").arg(fresh.join("\n• ")), QMessageBox::Ok, this);
+        box->setAttribute(Qt::WA_DeleteOnClose);
+        box->show();
+    }
+}
+
+void FourFpsShell::syncRewards()
+{
+    const QUrl url(fps::setting(fps::cfg::RewardsUrl).toString());
+    if (!url.isValid() || url.scheme() != "https")
+        return;
+    QNetworkRequest req(url);
+    req.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::AlwaysNetwork);
+    req.setTransferTimeout(15000);
+    auto* reply = APPLICATION->network()->get(req);
+    QPointer<FourFpsShell> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply] {
+        reply->deleteLater();
+        if (!self || reply->error() != QNetworkReply::NoError)
+            return;
+        const QByteArray data = reply->readAll();
+        const auto doc = QJsonDocument::fromJson(data);
+        const QJsonArray arr = doc.isArray() ? doc.array() : doc.object().value("premios").toArray();
+        if (arr.isEmpty() && !doc.object().contains("premios"))
+            return;  // respuesta rara: se queda con la lista anterior
+        QFile f(APPLICATION->dataRoot() + "/premios.json");
+        if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            f.write(data);
+        f.close();
+        // baja las imágenes que falten (solo desde GitHub)
+        const QString dir = APPLICATION->dataRoot() + "/premios";
+        QDir().mkpath(dir);
+        auto pending = std::make_shared<int>(0);
+        auto finish = [self] {
+            if (!self)
+                return;
+            self->checkRewards(false);
+            if (self->m_capesGrid)
+                self->refreshCapes();
+            if (self->m_wardrobeGrid)
+                self->refreshWardrobe();
+        };
+        for (const auto& r : fps::rewards()) {
+            const QUrl u(r.url);
+            const QString host = u.host().toLower();
+            if (r.url.isEmpty() || u.scheme() != "https" || !(host == "raw.githubusercontent.com" || host == "github.com"))
+                continue;
+            if (QFile::exists(dir + "/" + r.file))
+                continue;
+            ++*pending;
+            QNetworkRequest ir(u);
+            ir.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+            ir.setTransferTimeout(20000);
+            auto* rep = APPLICATION->network()->get(ir);
+            const QString target = dir + "/" + r.file;
+            QObject::connect(rep, &QNetworkReply::finished, self, [rep, target, pending, finish] {
+                rep->deleteLater();
+                QImage img;
+                if (rep->error() == QNetworkReply::NoError && img.loadFromData(rep->readAll()) && img.width() <= 2048 && img.height() <= 2048)
+                    img.save(target, "PNG");
+                if (--*pending == 0)
+                    finish();
+            });
+        }
+        if (*pending == 0)
+            finish();
+    });
 }
 
 // ------------------------------------------------------------------ campanita

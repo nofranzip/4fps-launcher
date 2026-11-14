@@ -33,7 +33,7 @@ class QComboBox;
 namespace fps {
 
 // versión de 4fps (se compara con la última release de GitHub)
-inline const char* Version = "1.2.1";
+inline const char* Version = "1.3.0";
 
 // ---------------------------------------------------------------- ajustes
 namespace cfg {
@@ -58,6 +58,11 @@ inline const char* LyricsPosition = "FourFps_LyricsPosition";
 inline const char* LyricsSize = "FourFps_LyricsSize";
 inline const char* BgImage = "FourFps_BgImage";
 inline const char* BgDim = "FourFps_BgDim";
+inline const char* SeasonalBg = "FourFps_SeasonalBg";
+inline const char* SeasonOverride = "FourFps_SeasonOverride";
+inline const char* SeasonUrl = "FourFps_SeasonUrl";
+inline const char* RewardsUrl = "FourFps_RewardsUrl";
+inline const char* LiteMode = "FourFps_LiteMode";
 }  // namespace cfg
 
 void registerSettings();
@@ -72,7 +77,12 @@ class Bus : public QObject {
     static Bus* get();
    signals:
     void settingsChanged();
+    void backgroundChanged();  // solo el fondo (más liviano que settingsChanged)
 };
+// guarda un ajuste sin refrescar todo el launcher (para sliders que se mueven mucho)
+void setSettingQuiet(const char* key, const QVariant& v);
+// tema de fondo de temporada activo ahora ("normal", "halloween", "navidad", "anonuevo", "verano", "fiestaspatrias", "evento")
+QString currentSeason();
 
 // texto que se oculta en modo stream
 QString streamSafe(const QString& text, const QString& replacement = QStringLiteral("••••••"));
@@ -97,6 +107,7 @@ class SettingsPage : public QWidget, public BasePage {
     QSpinBox* m_offset = nullptr;
     QComboBox* m_lyricsPos = nullptr;
     QComboBox* m_lyricsSize = nullptr;
+    QComboBox* m_season = nullptr;
 };
 
 // ---------------------------------------------------------------- ping de servidores (Server List Ping)
@@ -138,6 +149,31 @@ struct Hardware {
     bool weak() const;
 };
 Hardware detectHardware();
+// modo ligero: PCs con 8 GB de RAM o menos (si el ajuste "Ajustar a mi PC" está activo)
+bool liteMode();
+
+// premios: cosméticos que se desbloquean con medallas (lista en premios.json del GitHub)
+struct Reward {
+    QString id, name, type, file, url, medal, desc;
+    int medals = 0;
+};
+QList<Reward> rewards();
+QString rewardPath(const Reward& r);  // vacío si la imagen todavía no está
+bool rewardUnlocked(const Reward& r, const QStringList& owned);
+QString rewardRequirement(const Reward& r);  // "Medalla Equipo 4fps" / "3 medallas"
+QPixmap lockedThumb(const QPixmap& pm);
+QString liteReason();
+
+// RAM automática por instancia (ajuste de instancia "FourFpsAutoRam", activado por defecto)
+struct AutoRam {
+    int maxMb = 0, minMb = 0;
+    QString reason;
+};
+bool autoRamEnabled(MinecraftInstance* inst);
+void setAutoRamEnabled(MinecraftInstance* inst, bool on);
+AutoRam computeAutoRam(MinecraftInstance* inst);
+// aplica la RAM automática si está activa; devuelve el motivo (vacío si no se aplicó)
+QString applyAutoRam(MinecraftInstance* inst);
 bool slowModeActive(MinecraftInstance* inst);
 // mods que pueden no correr bien en PCs débiles: devuelve el motivo o vacío
 QString heavyModReason(const QString& nameOrFile);

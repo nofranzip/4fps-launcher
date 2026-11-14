@@ -1,0 +1,82 @@
+{
+  "_ayuda": "Lista de premios del launcher 4fps. Ver packaging-4fps/PREMIOS.md",
+  "premios": [
+    {
+      "id": "capa-dorada",
+      "nombre": "Capa 4fps dorada",
+      "tipo": "capa",
+      "archivo": "capa-dorada.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/capa-dorada.png",
+      "requisito": {
+        "medalla": "equipo"
+      },
+      "descripcion": "Exclusiva del Equipo 4fps"
+    },
+    {
+      "id": "capa-permaquistan",
+      "nombre": "Capa Permaquistán",
+      "tipo": "capa",
+      "archivo": "capa-permaquistan.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/capa-permaquistan.png",
+      "requisito": {
+        "medalla": "permaquistan"
+      },
+      "descripcion": "Por jugar en Permaquistán"
+    },
+    {
+      "id": "capa-panaquistan",
+      "nombre": "Capa Panaquistán",
+      "tipo": "capa",
+      "archivo": "capa-panaquistan.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/capa-panaquistan.png",
+      "requisito": {
+        "medalla": "panaquistan"
+      },
+      "descripcion": "Por el evento Panaquistán"
+    },
+    {
+      "id": "capa-panaquistan2",
+      "nombre": "Capa Panaquistán 2",
+      "tipo": "capa",
+      "archivo": "capa-panaquistan2.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/capa-panaquistan2.png",
+      "requisito": {
+        "medalla": "panaquistan2"
+      },
+      "descripcion": "Por el evento Panaquistán 2"
+    },
+    {
+      "id": "bandana-4fps",
+      "nombre": "Bandana 4fps",
+      "tipo": "ropa",
+      "archivo": "bandana-4fps.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/bandana-4fps.png",
+      "requisito": {
+        "medallas": 2
+      },
+      "descripcion": "Consigue 2 medallas"
+    },
+    {
+      "id": "corona-4fps",
+      "nombre": "Corona 4fps",
+      "tipo": "ropa",
+      "archivo": "corona-4fps.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/corona-4fps.png",
+      "requisito": {
+        "medallas": 3
+      },
+      "descripcion": "Consigue 3 medallas"
+    },
+    {
+      "id": "capa-coleccionista",
+      "nombre": "Capa Coleccionista",
+      "tipo": "capa",
+      "archivo": "capa-coleccionista.png",
+      "url": "https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios/capa-coleccionista.png",
+      "requisito": {
+        "medallas": 4
+      },
+      "descripcion": "Consigue 4 medallas"
+    }
+  ]
+}

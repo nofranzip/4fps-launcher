@@ -308,6 +308,18 @@ QWidget* FourFpsShell::buildVersionsPage()
     m_ram->setRange(1, 16);
     m_ram->setValue(4);
     connect(m_ram, &QSlider::valueChanged, this, [this](int gb) { m_ramLabel->setText(QStringLiteral("%1 GB").arg(gb)); });
+    auto* autoRam = new QCheckBox(tr("RAM automática (recomendado)"), right);
+    autoRam->setObjectName(QStringLiteral("fpsToggle"));
+    autoRam->setChecked(true);
+    autoRam->setToolTip(QStringLiteral("<b>%1</b><br>%2").arg(tr("RAM automática"), tr("4fps calcula la RAM según tu PC y los mods de la instancia, y deja RAM libre para Windows. Apágalo para elegirla tú con la barra.")));
+    m_ram->setEnabled(false);
+    m_ramLabel->setText(tr("Automática"));
+    connect(autoRam, &QCheckBox::toggled, this, [this](bool on) {
+        m_ram->setEnabled(!on);
+        m_ramLabel->setText(on ? tr("Automática") : QStringLiteral("%1 GB").arg(m_ram->value()));
+    });
+    m_autoRamNew = autoRam;
+    rv->addWidget(autoRam);
     rv->addWidget(m_ram);
     auto* ramScale = new QHBoxLayout();
     ramScale->addWidget(makeLabel("1 GB", QStringLiteral("fpsHint"), right));
@@ -359,8 +371,15 @@ QWidget* FourFpsShell::buildVersionsPage()
         for (int i = list->count() - 1; i >= 0; i--) {
             auto* inst = list->at(i);
             if (inst->name() == m_pendingName) {
-                inst->settings()->set("OverrideMemory", true);
-                inst->settings()->set("MaxMemAlloc", m_pendingRam);
+                auto* mi = dynamic_cast<MinecraftInstance*>(inst);
+                if (mi && m_autoRamNew && m_autoRamNew->isChecked()) {
+                    fps::setAutoRamEnabled(mi, true);  // calcula y aplica la RAM según el PC
+                } else {
+                    if (mi)
+                        fps::setAutoRamEnabled(mi, false);
+                    inst->settings()->set("OverrideMemory", true);
+                    inst->settings()->set("MaxMemAlloc", m_pendingRam);
+                }
                 m_hooks.select(inst);
                 break;
             }

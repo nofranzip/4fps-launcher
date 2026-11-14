@@ -132,6 +132,8 @@ class FourFpsShell : public QWidget {
     void scanServerBadges();
     void redeemCode(const QString& code);
     bool grantBadge(const QString& id, const QString& reason);
+    void checkRewards(bool popup);
+    void syncRewards();
     void updateBell();
     void showNotifications();
     void refreshProfile();
@@ -185,6 +187,8 @@ class FourFpsShell : public QWidget {
     QLabel* m_detailTitle = nullptr;
     QLabel* m_detailSub = nullptr;
     QLabel* m_detailRam = nullptr;
+    QCheckBox* m_autoRamToggle = nullptr;
+    QLabel* m_autoRamHint = nullptr;
     QLabel* m_detailJava = nullptr;
     QWidget* m_detailBody = nullptr;
     QCheckBox* m_pvpToggle = nullptr;
@@ -204,6 +208,7 @@ class FourFpsShell : public QWidget {
     QComboBox* m_loaderVersion = nullptr;
     QSlider* m_ram = nullptr;
     QLabel* m_ramLabel = nullptr;
+    QCheckBox* m_autoRamNew = nullptr;
     int m_pendingRam = 0;
     QString m_pendingName;
     bool m_versionsLoading = false;

@@ -568,6 +568,8 @@ FourFpsShell::FourFpsShell(FourFpsHooks hooks, QWidget* parent) : QWidget(parent
         grantBadge(QStringLiteral("bienvenida"), tr("¡Bienvenido a 4fps! Ganaste tu primera medalla"));
         scanServerBadges();
         updateBell();
+        checkRewards(false);
+        syncRewards();  // baja la lista de premios (premios.json) del GitHub
     });
 }
 
@@ -817,6 +819,25 @@ QWidget* FourFpsShell::buildInstancesPage()
         connect(b, &QPushButton::clicked, this, fn);
         bv->addWidget(b);
     };
+    m_autoRamToggle = new QCheckBox(tr("RAM automática"), m_detailBody);
+    m_autoRamToggle->setObjectName(QStringLiteral("fpsToggle"));
+    m_autoRamToggle->setToolTip(tip(tr("RAM automática"),
+                                    tr("4fps elige cuánta RAM darle al juego según la RAM de tu PC y cuántos mods tiene la instancia (siempre deja RAM libre para Windows). "
+                                       "Si lo apagas, la RAM la eliges tú en \"Configuración de la instancia\" → Java.")));
+    connect(m_autoRamToggle, &QCheckBox::toggled, this, [this](bool on) {
+        if (auto* inst = m_hooks.selected()) {
+            fps::setAutoRamEnabled(inst, on);
+            if (!on)
+                QMessageBox::information(this, tr("RAM automática"),
+                                         tr("RAM automática apagada. Ahora la RAM la eliges tú: abre \"Configuración de la instancia\" → Java → Memoria. "
+                                            "Se queda con %1 MB hasta que la cambies.").arg(inst->settings()->get("MaxMemAlloc").toInt()));
+            updateDetail();
+        }
+    });
+    bv->addWidget(m_autoRamToggle);
+    m_autoRamHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
+    m_autoRamHint->setWordWrap(true);
+    bv->addWidget(m_autoRamHint);
     m_pvpToggle = new QCheckBox(tr("Cliente PvP 4fps"), m_detailBody);
     m_pvpToggle->setObjectName(QStringLiteral("fpsToggle"));
     m_pvpToggle->setToolTip(tip(tr("Cliente PvP 4fps"), tr("Al jugar instala OneConfig de Polyfrost: menú de todos tus mods (Shift derecho), editor de HUD, hitboxes y crosshair. Solo en instancias Fabric.")));
@@ -984,6 +1005,14 @@ void FourFpsShell::updateDetail()
     else if (pp && loader == "Quilt")
         sub += QStringLiteral(" · Quilt %1").arg(pp->getComponentVersion("org.quiltmc.quilt-loader"));
     m_detailSub->setText(sub);
+    {
+        const QString why = fps::applyAutoRam(sel);
+        const bool autoOn = fps::autoRamEnabled(sel);
+        m_autoRamToggle->blockSignals(true);
+        m_autoRamToggle->setChecked(autoOn);
+        m_autoRamToggle->blockSignals(false);
+        m_autoRamHint->setText(autoOn ? why : tr("RAM manual: cámbiala en Configuración de la instancia → Java."));
+    }
     const int mb = sel->settings()->get("MaxMemAlloc").toInt();
     m_detailRam->setText(mb >= 1024 ? QStringLiteral("%1 GB").arg(QString::number(mb / 1024.0, 'g', 2)) : QStringLiteral("%1 MB").arg(mb));
     QString java = sel->settings()->get("JavaVersion").toString();
@@ -1438,6 +1467,13 @@ void FourFpsShell::applyFeatureSettings()
         m_streamToggle->blockSignals(true);
         m_streamToggle->setChecked(fps::streamMode());
         m_streamToggle->blockSignals(false);
+    }
+    if (fps::liteMode() && fps::enabled(fps::cfg::Lyrics))
+        fps::setSetting(fps::cfg::Lyrics, false);  // PC de 8 GB o menos: sin modo música
+    if (m_musicToggle) {
+        m_musicToggle->setEnabled(!fps::liteMode());
+        m_musicToggle->setToolTip(fps::liteMode() ? tip(tr("Modo música (bloqueado)"), fps::liteReason())
+                                                  : tip(tr("Modo música"), tr("Muestra la canción que suena en tu PC (Spotify, YouTube en el navegador, etc.) arriba a la izquierda sobre el juego y aquí abajo. Si encuentra la letra, la agrega. Clic para prender o apagar.")));
     }
     const bool lyrics = fps::enabled(fps::cfg::Lyrics);
     if (m_musicToggle) {

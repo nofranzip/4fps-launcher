@@ -94,6 +94,11 @@ void registerSettings()
     reg(cfg::LyricsSize, 0);
     reg(cfg::BgImage, QString());
     reg(cfg::BgDim, 55);
+    reg(cfg::SeasonalBg, true);
+    reg(cfg::SeasonOverride, QStringLiteral("auto"));
+    reg(cfg::SeasonUrl, QStringLiteral("https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/fondos.json"));
+    reg(cfg::RewardsUrl, QStringLiteral("https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/premios.json"));
+    reg(cfg::LiteMode, true);
 }
 
 QVariant setting(const char* key)
@@ -110,6 +115,12 @@ void setSetting(const char* key, const QVariant& v)
     registerSettings();
     APPLICATION->settings()->set(key, v);
     emit Bus::get()->settingsChanged();
+}
+
+void setSettingQuiet(const char* key, const QVariant& v)
+{
+    registerSettings();
+    APPLICATION->settings()->set(key, v);
 }
 
 Bus* Bus::get()
@@ -145,6 +156,12 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
     outer->addWidget(scroll);
     auto* v = new QVBoxLayout(host);
 
+    if (liteMode()) {
+        auto* lite = new QLabel(QStringLiteral("<b>%1</b><br>%2").arg(tr("Modo ligero activo"), liteReason().toHtmlEscaped()), host);
+        lite->setWordWrap(true);
+        lite->setStyleSheet(QStringLiteral("QLabel{background:#26262b;border-radius:8px;padding:10px;}"));
+        v->addWidget(lite);
+    }
     auto* g1 = new QGroupBox(tr("Funciones del launcher"), host);
     auto* g1v = new QVBoxLayout(g1);
     const QList<QPair<const char*, QString>> items = {
@@ -159,6 +176,8 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
         { cfg::DiscordRpc, tr("Mostrar \"Jugando en 4fps\" en Discord") },
         { cfg::Lyrics, tr("Modo música (canción que suena y letra si existe)") },
         { cfg::LyricsOverlay, tr("Música: mostrar la canción sobre el juego") },
+        { cfg::SeasonalBg, tr("Fondos por temporada y eventos (Halloween, Navidad, Año Nuevo, verano...)") },
+        { cfg::LiteMode, tr("Ajustar el launcher a mi PC (modo ligero en PCs de 8 GB de RAM o menos)") },
     };
     for (const auto& it : items) {
         auto* c = new QCheckBox(it.second, g1);
@@ -214,6 +233,15 @@ SettingsPage::SettingsPage(QWidget* parent) : QWidget(parent)
     m_lyricsSize->addItems({ tr("Chica"), tr("Mediana"), tr("Grande") });
     m_lyricsSize->setCurrentIndex(qBound(0, setting(cfg::LyricsSize).toInt(), 2));
     form->addRow(tr("Tamaño de la música"), m_lyricsSize);
+    m_season = new QComboBox(g3);
+    const QList<QPair<QString, QString>> seasons = { { "auto", tr("Automático (según la fecha)") }, { "normal", tr("Normal (gris)") }, { "halloween", tr("Halloween") },
+                                                     { "navidad", tr("Navidad") }, { "anonuevo", tr("Año Nuevo") }, { "verano", tr("Verano") },
+                                                     { "fiestaspatrias", tr("Fiestas Patrias") } };
+    for (const auto& p : seasons)
+        m_season->addItem(p.second, p.first);
+    m_season->setCurrentIndex(qMax(0, m_season->findData(setting(cfg::SeasonOverride).toString())));
+    m_season->setToolTip(tr("Para ver cómo queda cada fondo sin esperar la fecha. Normalmente déjalo en Automático."));
+    form->addRow(tr("Fondo de temporada"), m_season);
     v->addWidget(g3);
     v->addStretch();
 }
@@ -233,6 +261,7 @@ bool SettingsPage::apply()
     s->set(cfg::LyricsOffset, m_offset->value());
     s->set(cfg::LyricsPosition, m_lyricsPos->currentData().toString());
     s->set(cfg::LyricsSize, m_lyricsSize->currentIndex());
+    s->set(cfg::SeasonOverride, m_season->currentData().toString());
     emit Bus::get()->settingsChanged();
     return true;
 }
@@ -787,6 +816,7 @@ QString issuesHtml(const QList<ConflictIssue>& issues, bool full)
 
 bool confirmLaunch(QWidget* parent, MinecraftInstance* inst)
 {
+    applyAutoRam(inst);  // RAM automática justo antes de jugar
     if (!inst || !enabled(cfg::ConflictCheck))
         return true;
     QApplication::setOverrideCursor(Qt::WaitCursor);
@@ -1112,6 +1142,101 @@ Hardware detectHardware()
 #endif
     cached = h;
     return h;
+}
+
+bool liteMode()
+{
+    if (!enabled(cfg::LiteMode))
+        return false;
+    const Hardware hw = detectHardware();
+    return hw.ramMb > 0 && hw.ramMb <= 8 * 1024 + 512;  // 8 GB o menos
+}
+
+QString liteReason()
+{
+    const Hardware hw = detectHardware();
+    return QObject::tr("Tu PC tiene %1 GB de RAM, así que 4fps se ajusta para no sobrecargarla: el modo música está apagado, "
+                       "la galería de capas muestra menos capas a la vez y los colores son solo los predeterminados. "
+                       "Puedes quitarlo en Ajustes → Funciones 4fps (\"Ajustar el launcher a mi PC\"), pero puede ir más lento.")
+        .arg(QString::number(hw.ramMb / 1024.0, 'f', 0));
+}
+
+// ---------------------------------------------------------------- RAM automática
+bool autoRamEnabled(MinecraftInstance* inst)
+{
+    if (!inst)
+        return false;
+    auto* s = inst->settings();
+    if (!s->contains("FourFpsAutoRam"))
+        s->registerSetting("FourFpsAutoRam", true);
+    return s->get("FourFpsAutoRam").toBool();
+}
+
+void setAutoRamEnabled(MinecraftInstance* inst, bool on)
+{
+    if (!inst)
+        return;
+    autoRamEnabled(inst);
+    inst->settings()->set("FourFpsAutoRam", on);
+    if (on)
+        applyAutoRam(inst);
+}
+
+AutoRam computeAutoRam(MinecraftInstance* inst)
+{
+    AutoRam r;
+    if (!inst)
+        return r;
+    const Hardware hw = detectHardware();
+    const qint64 total = hw.ramMb > 0 ? hw.ramMb : 8192;
+    // cuántos mods activos tiene
+    const int mods = QDir(inst->modsRoot()).entryList({ "*.jar" }, QDir::Files).size();
+    auto* pp = inst->getPackProfile();
+    const bool modded = pp && (!pp->getComponentVersion("net.fabricmc.fabric-loader").isEmpty() || !pp->getComponentVersion("net.minecraftforge").isEmpty() ||
+                               !pp->getComponentVersion("net.neoforged").isEmpty() || !pp->getComponentVersion("org.quiltmc.quilt-loader").isEmpty());
+    QString kind;
+    int want;
+    if (!modded || mods == 0) {
+        kind = QObject::tr("vanilla");
+        want = total >= 16 * 1024 ? 3072 : 2048;
+    } else if (mods <= 30) {
+        kind = QObject::tr("pocos mods (%1)").arg(mods);
+        want = 3072;
+    } else if (mods <= 100) {
+        kind = QObject::tr("modpack mediano (%1 mods)").arg(mods);
+        want = total >= 16 * 1024 ? 6144 : 4096;
+    } else {
+        kind = QObject::tr("modpack grande (%1 mods)").arg(mods);
+        want = total >= 24 * 1024 ? 8192 : total >= 16 * 1024 ? 7168 : 6144;
+    }
+    // siempre dejar RAM libre para Windows (4 GB, o 3 GB en PCs chicos) y nunca más de 10 GB
+    const qint64 reserve = total <= 8 * 1024 + 512 ? 3072 : 4096;
+    const int maxAllowed = int(qMax<qint64>(1024, qMin<qint64>(10240, total - reserve)));
+    r.maxMb = qMax(1024, qMin(want, maxAllowed));
+    r.maxMb = (r.maxMb / 512) * 512;
+    r.minMb = qMax(512, qMin(2048, r.maxMb / 2));
+    const QString gb = r.maxMb % 1024 == 0 ? QString::number(r.maxMb / 1024) : QString::number(r.maxMb / 1024.0, 'f', 1);
+    r.reason = QObject::tr("%1 GB — %2, PC con %3 GB").arg(gb, kind, QString::number(total / 1024.0, 'f', 0));
+    if (want > maxAllowed)
+        r.reason += QObject::tr(" (limitado para dejar RAM libre a Windows)");
+    return r;
+}
+
+QString applyAutoRam(MinecraftInstance* inst)
+{
+    if (!autoRamEnabled(inst))
+        return {};
+    if (QFile::exists(inst->instanceRoot() + "/4fps-pclento.json"))
+        return QObject::tr("El Modo potato maneja la RAM de esta instancia");
+    const AutoRam r = computeAutoRam(inst);
+    auto* s = inst->settings();
+    if (!s->get("OverrideMemory").toBool())
+        s->set("OverrideMemory", true);
+    if (s->get("MaxMemAlloc").toInt() != r.maxMb)
+        s->set("MaxMemAlloc", r.maxMb);
+    if (s->get("MinMemAlloc").toInt() != r.minMb)
+        s->set("MinMemAlloc", r.minMb);
+    return r.reason;
 }
 
 namespace {
