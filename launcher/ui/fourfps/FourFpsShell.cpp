@@ -850,7 +850,7 @@ QWidget* FourFpsShell::buildInstancesPage()
     m_sharedCapesToggle->setObjectName(QStringLiteral("fpsToggle"));
     m_sharedCapesToggle->setToolTip(tip(tr("Ver capas de otros jugadores"),
                                         tr("Al jugar instala el mod MinecraftCapes para ver las capas de otros jugadores que también usen 4fps (y que las vean de ti). "
-                                           "Aparece en la lista de Mods. Solo en instancias Fabric.")));
+                                           "Aparece en la lista de Mods. Funciona en instancias Fabric, Forge y NeoForge.")));
     connect(m_sharedCapesToggle, &QCheckBox::toggled, this, [this](bool on) {
         if (auto* inst = m_hooks.selected())
             setSharedCapesEnabled(inst, on);
@@ -1034,9 +1034,10 @@ void FourFpsShell::updateDetail()
     m_pvpToggle->setEnabled(supported);
     m_pvpToggle->blockSignals(false);
     if (m_sharedCapesToggle) {
+        const bool capesSupported = sharedCapesSupported(sel);
         m_sharedCapesToggle->blockSignals(true);
-        m_sharedCapesToggle->setChecked(supported && sharedCapesEnabled(sel));
-        m_sharedCapesToggle->setEnabled(supported);
+        m_sharedCapesToggle->setChecked(capesSupported && sharedCapesEnabled(sel));
+        m_sharedCapesToggle->setEnabled(capesSupported);
         m_sharedCapesToggle->blockSignals(false);
     }
     if (m_slowButton) {

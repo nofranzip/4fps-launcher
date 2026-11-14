@@ -122,6 +122,7 @@ class FourFpsShell : public QWidget {
     void launchAfterSharedCapes(MinecraftInstance* inst);
     static bool sharedCapesEnabled(MinecraftInstance* inst);
     static void setSharedCapesEnabled(MinecraftInstance* inst, bool on);
+    static bool sharedCapesSupported(MinecraftInstance* inst);
     void useCapeInGame(const QImage& cape, const QString& name);
     void refreshWardrobe();
     void updateWardrobePreview();

@@ -248,6 +248,13 @@ QStringList FourFpsShell::pvpFiles(MinecraftInstance* inst)
     return inst->settings()->get(kPvpFiles).toStringList();
 }
 
+bool FourFpsShell::sharedCapesSupported(MinecraftInstance* inst)
+{
+    // MinecraftCapes existe para Fabric, Quilt, Forge y NeoForge
+    const QString l = loaderOf(inst);
+    return l == "Fabric" || l == "Quilt" || l == "Forge" || l == "NeoForge";
+}
+
 bool FourFpsShell::sharedCapesEnabled(MinecraftInstance* inst)
 {
     if (!inst)
@@ -299,8 +306,13 @@ void FourFpsShell::launchSelected()
     m_currentServer.clear();
     if (!inst->isRunning())
         watchLaunch(inst);
-    if (!pvpSupported(inst) || inst->isRunning()) {
+    if (inst->isRunning() || (!pvpSupported(inst) && !sharedCapesSupported(inst))) {
         m_hooks.launch();
+        return;
+    }
+    // el mod de capas propias de 4fps es solo para Fabric/Quilt; en Forge/NeoForge se salta a las capas compartidas
+    if (!pvpSupported(inst)) {
+        launchAfterCapes(inst);
         return;
     }
     // el mod de capas de 4fps viene siempre en las instancias Fabric
@@ -331,11 +343,17 @@ void FourFpsShell::launchSelected()
 void FourFpsShell::launchAfterCapes(MinecraftInstance* inst)
 {
     // MinecraftCapes: para ver (y que vean) las capas de otros jugadores de 4fps. Se instala como mod visible.
-    if (pvpSupported(inst) && sharedCapesEnabled(inst)) {
+    // Funciona en Fabric, Quilt, Forge y NeoForge.
+    if (sharedCapesSupported(inst) && sharedCapesEnabled(inst)) {
+        const QString l = loaderOf(inst);
+        QStringList capeLoaders = l == "Quilt"      ? QStringList{ "quilt", "fabric" }
+                                  : l == "Forge"    ? QStringList{ "forge" }
+                                  : l == "NeoForge" ? QStringList{ "neoforge" }
+                                                    : QStringList{ "fabric" };
         auto job = std::make_shared<PvpJob>();
         job->inst = inst;
         job->mc = mcVersionOf(inst);
-        job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
+        job->loaders = capeLoaders;
         job->queue = { "minecraftcapes" };  // sus dependencias (si pide Fabric API) se agregan solas
         job->filesKey = QStringLiteral("FourFpsSharedCapeFiles");
         job->title = tr("Preparando capas de 4fps...");
@@ -360,7 +378,8 @@ void FourFpsShell::launchAfterCapes(MinecraftInstance* inst)
 
 void FourFpsShell::launchAfterSharedCapes(MinecraftInstance* inst)
 {
-    if (!pvpEnabled(inst)) {
+    // el cliente PvP es solo Fabric/Quilt; en Forge/NeoForge no se instala nada
+    if (!pvpSupported(inst) || !pvpEnabled(inst)) {
         m_hooks.launch();
         return;
     }

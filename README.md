@@ -30,7 +30,7 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - **Premios por medallas**: capas y accesorios que se desbloquean al ganar medallas, definidos en [`premios.json`](premios.json) ([cómo editarlo](packaging-4fps/PREMIOS.md)). Lo bloqueado se ve con candado y el requisito.
 - **Modo ligero** para PCs de 8 GB de RAM o menos: sin modo música, menos capas a la vez y solo colores predeterminados.
 - El círculo cromático ya no traba el launcher.
-- **Ver capas de otros jugadores**: instala MinecraftCapes en las instancias Fabric (interruptor en la instancia, encendido por defecto) para ver —y que vean— las capas de otros que usen 4fps. Aparece en la lista de Mods.
+- **Ver capas de otros jugadores**: instala MinecraftCapes en las instancias Fabric (interruptor en la instancia, encendido por defecto) para ver —y que vean— las capas de otros que usen 4fps. Aparece en la lista de Mods. Funciona en Fabric, Forge y NeoForge.
 
 ## Compilar
 Ver `packaging-4fps/COMPILAR.md`. El pack propio de ropa y capas se genera con `packaging-4fps/generar_pack4fps.py`.
