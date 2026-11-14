@@ -840,7 +840,7 @@ QWidget* FourFpsShell::buildInstancesPage()
     bv->addWidget(m_autoRamHint);
     m_pvpToggle = new QCheckBox(tr("Cliente PvP 4fps"), m_detailBody);
     m_pvpToggle->setObjectName(QStringLiteral("fpsToggle"));
-    m_pvpToggle->setToolTip(tip(tr("Cliente PvP 4fps"), tr("Al jugar instala OneConfig de Polyfrost: menú de todos tus mods (Shift derecho), editor de HUD, hitboxes y crosshair. Solo en instancias Fabric.")));
+    m_pvpToggle->setToolTip(tip(tr("Cliente PvP 4fps"), tr("Al jugar instala el 4fps Client: editor de HUD (Shift derecho), crosshair, hitboxes y módulos (FPS, CPS, coordenadas, ping, teclas). Aparece en la lista de Mods. Solo en instancias Fabric/Quilt y en versiones con cliente disponible.")));
     connect(m_pvpToggle, &QCheckBox::toggled, this, [this](bool on) {
         if (auto* inst = m_hooks.selected())
             setPvpEnabled(inst, on);
@@ -1057,7 +1057,7 @@ void FourFpsShell::updateDetail()
                                            : tr("Para PCs de bajos recursos: ajusta la RAM y Java, desactiva mods pesados (Voxy, Distant Horizons, Iris/shaders, EMF, Lyrica), instala mods de rendimiento (Sodium, Lithium, FerriteCore, EntityCulling, ImmediatelyFast, ModernFix) y baja el video. Se deshace con un clic.")) +
                                          QStringLiteral("\n\n") + tr("Tu PC: %1").arg(hwText)));
     }
-    m_pvpHint->setText(supported ? tr("OneConfig de Polyfrost: menú de mods, editor de HUD, hitboxes y crosshair. Se instala solo al jugar.")
+    m_pvpHint->setText(supported ? tr("4fps Client: editor de HUD (Shift derecho), crosshair, hitboxes y módulos. Se instala solo al jugar.")
                                  : tr("Disponible en instancias Fabric o Quilt."));
 }
 

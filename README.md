@@ -23,6 +23,10 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.4
+
+- **Cliente PvP propio (4fps Client)**: el launcher ahora instala el mod **4fps Client** (editor de HUD con Shift derecho, crosshair, hitboxes y módulos de FPS, CPS, coordenadas, ping y teclas) en vez de OneConfig/PolyHitbox/PolyCrosshair. Instala el jar que corresponde a la versión de Minecraft de cada instancia (por ahora 26.2 Fabric; se irán agregando más). Aparece en la lista de Mods.
+
 ## Novedades 1.3
 
 - **RAM automática**: cada instancia calcula su RAM según la RAM del PC y cuántos mods tiene (vanilla 2–3 GB, pocos mods 3 GB, modpack mediano 4–6 GB, grande 6–8 GB), siempre deja 3–4 GB libres para Windows y nunca pasa de 10 GB. Se puede apagar por instancia para elegirla a mano.

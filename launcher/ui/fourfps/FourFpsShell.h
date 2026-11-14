@@ -120,6 +120,8 @@ class FourFpsShell : public QWidget {
     void checkLaunchStuck(BaseInstance* inst, int tries);
     void launchAfterCapes(MinecraftInstance* inst);
     void launchAfterSharedCapes(MinecraftInstance* inst);
+    void installClient(MinecraftInstance* inst);
+    static QString clientJarFor(MinecraftInstance* inst);
     static bool sharedCapesEnabled(MinecraftInstance* inst);
     static void setSharedCapesEnabled(MinecraftInstance* inst, bool on);
     static bool sharedCapesSupported(MinecraftInstance* inst);

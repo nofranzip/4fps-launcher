@@ -1,4 +1,4 @@
-// 4fps - Cliente PvP: instala OneConfig de Polyfrost + PolyHitbox/PolyCrosshair (y sus dependencias) desde Modrinth antes de jugar
+// 4fps - Cliente PvP: instala el jar del 4fps Client (mod propio, id "fourfps") que corresponde a la version de cada instancia, desde pack4fps/client
 #include "FourFpsShell.h"
 #include "FourFpsFeatures.h"
 
@@ -17,6 +17,7 @@
 #include <QPointer>
 #include <QProgressDialog>
 #include <QUrlQuery>
+#include <QCoreApplication>
 #include <memory>
 
 #include "Application.h"
@@ -62,7 +63,7 @@ struct PvpJob : std::enable_shared_from_this<PvpJob> {
     QString filesKey = kPvpFiles;
     QStringList fallback;                 // proyectos a probar si el primero no tiene version
     std::function<bool()> needFallback;
-    QString title = QObject::tr("Preparando Cliente PvP 4fps...");
+    QString title = QObject::tr("Preparando 4fps...");
     bool onlyDownloaded = false;  // guardar solo lo que 4fps descargó (para poder quitarlo después sin tocar mods del usuario)
     QStringList downloaded;
 
@@ -383,23 +384,64 @@ void FourFpsShell::launchAfterSharedCapes(MinecraftInstance* inst)
         m_hooks.launch();
         return;
     }
-    auto job = std::make_shared<PvpJob>();
-    job->inst = inst;
-    job->mc = mcVersionOf(inst);
-    job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
-    // OneConfig (menú de mods y editor de HUD) + mods PvP de Polyfrost; los que no existan para la versión se saltan
-    job->queue = { "oneconfig", "hitbox", "crosshair", "fabric-language-kotlin", "fabric-api" };
-    job->progress = new QProgressDialog(tr("Preparando Cliente PvP 4fps..."), QString(), 0, 0, this);
-    job->progress->setWindowTitle(QStringLiteral("4fps"));
-    job->progress->setCancelButton(nullptr);
-    job->progress->setMinimumDuration(400);
-    job->progress->setWindowModality(Qt::WindowModal);
-    job->done = [this] {
-        if (m_modsInstance)
-            m_modsInstance = nullptr;  // fuerza a releer la lista de mods
-        m_hooks.launch();
-    };
-    job->next();
+    installClient(inst);  // copia el jar del 4fps Client de esta versión (local, sin red)
+    if (m_modsInstance)
+        m_modsInstance = nullptr;  // fuerza a releer la lista de mods
+    m_hooks.launch();
+}
+
+// jar del 4fps Client que corresponde a esta instancia, de pack4fps/client.
+// Los jars se llaman 4fps-client-<version del mod>+<version de Minecraft>[-<loader>].jar
+QString FourFpsShell::clientJarFor(MinecraftInstance* inst)
+{
+    const QString mc = mcVersionOf(inst);
+    if (mc.isEmpty())
+        return {};
+    const QString loader = loaderOf(inst).toLower();  // "fabric", "quilt", "forge"...
+    const QString dir = QCoreApplication::applicationDirPath() + "/pack4fps/client";
+    QString fabricMatch;
+    for (const auto& fi : QDir(dir).entryInfoList({ "4fps-client-*.jar" }, QDir::Files, QDir::Name)) {
+        QString tag = fi.completeBaseName().section('+', 1);  // lo que viene después del '+'
+        if (tag.isEmpty())
+            continue;
+        const QString ver = tag.section('-', 0, 0);            // versión de Minecraft
+        const QString suffix = tag.section('-', 1).toLower();  // loader opcional ("forge")
+        if (ver != mc)
+            continue;
+        if (!suffix.isEmpty()) {
+            // jar específico de un loader (p. ej. Forge 1.8.9)
+            if (suffix == loader || (suffix == "forge" && loader == "neoforge"))
+                return fi.absoluteFilePath();
+            continue;
+        }
+        fabricMatch = fi.absoluteFilePath();  // jar Fabric/Quilt (sin sufijo de loader)
+    }
+    // Fabric y Quilt usan el jar sin sufijo; Forge/NeoForge solo si hay jar propio (ya habría salido arriba)
+    if (loader == "fabric" || loader == "quilt")
+        return fabricMatch;
+    return {};
+}
+
+void FourFpsShell::installClient(MinecraftInstance* inst)
+{
+    if (!inst)
+        return;
+    ensureSettings(inst);
+    auto* s = inst->settings();
+    // quita lo que 4fps haya puesto antes (OneConfig viejo o un jar anterior del cliente), sin tocar los mods del usuario
+    for (const auto& f : s->get(kPvpFiles).toStringList())
+        QFile::remove(inst->modsRoot() + "/" + f);
+    s->set(kPvpFiles, QStringList());
+
+    const QString jar = clientJarFor(inst);
+    if (jar.isEmpty())
+        return;  // todavía no hay cliente para esta versión de Minecraft: no instala nada
+    QDir().mkpath(inst->modsRoot());
+    const QString name = QFileInfo(jar).fileName();
+    const QString dest = inst->modsRoot() + "/" + name;
+    QFile::remove(dest);
+    if (QFile::copy(jar, dest))
+        s->set(kPvpFiles, QStringList{ name });
 }
 
 // Capa solo para 4fps: instala "Cape Provider" (Fabric, solo cliente) y deja la capa como proveedor local.
