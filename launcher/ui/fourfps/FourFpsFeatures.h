@@ -33,7 +33,7 @@ class QComboBox;
 namespace fps {
 
 // versión de 4fps (se compara con la última release de GitHub)
-inline const char* Version = "1.4.2";
+inline const char* Version = "1.4.3";
 
 // ---------------------------------------------------------------- ajustes
 namespace cfg {
@@ -58,6 +58,7 @@ inline const char* LyricsPosition = "FourFps_LyricsPosition";
 inline const char* LyricsSize = "FourFps_LyricsSize";
 inline const char* BgImage = "FourFps_BgImage";
 inline const char* BgDim = "FourFps_BgDim";
+inline const char* UpdateUrl = "FourFps_UpdateUrl";
 inline const char* SeasonalBg = "FourFps_SeasonalBg";
 inline const char* SeasonOverride = "FourFps_SeasonOverride";
 inline const char* SeasonUrl = "FourFps_SeasonUrl";

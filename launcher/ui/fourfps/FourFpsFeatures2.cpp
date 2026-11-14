@@ -1128,7 +1128,7 @@ QWidget* buildUpdateBanner(QWidget* parent)
     h->addWidget(get);
     h->addWidget(later);
     bar->hide();
-    auto url = std::make_shared<QString>(QStringLiteral("https://github.com/nofranzip/4fps-launcher/releases/latest"));
+    auto url = std::make_shared<QString>(setting(cfg::UpdateUrl).toString());  // página de descargas (no el GitHub)
     QObject::connect(get, &QPushButton::clicked, bar, [url] { QDesktopServices::openUrl(QUrl(*url)); });
     QObject::connect(later, &QPushButton::clicked, bar, &QWidget::hide);
     auto check = [bar, text, url] {
@@ -1142,8 +1142,7 @@ QWidget* buildUpdateBanner(QWidget* parent)
             const QString tag = o.value("tag_name").toString();
             if (tag.isEmpty() || cmpVer(tag, QString::fromLatin1(Version)) <= 0)
                 return;
-            if (!o.value("html_url").toString().isEmpty())
-                *url = o.value("html_url").toString();
+            // el botón "Descargar" siempre abre la página de descargas de 4fps, no el GitHub
             text->setText(QObject::tr("Hay una versión nueva de 4fps (%1). Tú tienes la %2. Descárgala desde la página del launcher.").arg(tag, QString::fromLatin1(Version)));
             bar->show();
         });

@@ -94,6 +94,7 @@ void registerSettings()
     reg(cfg::LyricsSize, 0);
     reg(cfg::BgImage, QString());
     reg(cfg::BgDim, 55);
+    reg(cfg::UpdateUrl, QStringLiteral("https://claude.ai/artifact/SWQVxU8a1nnGUGHCYaoCpb"));  // página de descargas del launcher
     reg(cfg::SeasonalBg, true);
     reg(cfg::SeasonOverride, QStringLiteral("auto"));
     reg(cfg::SeasonUrl, QStringLiteral("https://raw.githubusercontent.com/nofranzip/4fps-launcher/main/fondos.json"));

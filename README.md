@@ -23,6 +23,10 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.4.3
+
+- El aviso de actualización ahora abre la **página de descargas de 4fps** (configurable) en vez del GitHub. Se puede cambiar con el ajuste `FourFps_UpdateUrl`.
+
 ## Novedades 1.4.2
 
 - **Exportar instancia**: volvió la opción de exportar una instancia desde el panel de la instancia (Prism `.zip`, Modrinth `.mrpack` o CurseForge `.zip`), para compartirla o respaldarla.
