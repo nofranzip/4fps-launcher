@@ -119,6 +119,9 @@ class FourFpsShell : public QWidget {
     void watchLaunch(BaseInstance* inst);
     void checkLaunchStuck(BaseInstance* inst, int tries);
     void launchAfterCapes(MinecraftInstance* inst);
+    void launchAfterSharedCapes(MinecraftInstance* inst);
+    static bool sharedCapesEnabled(MinecraftInstance* inst);
+    static void setSharedCapesEnabled(MinecraftInstance* inst, bool on);
     void useCapeInGame(const QImage& cape, const QString& name);
     void refreshWardrobe();
     void updateWardrobePreview();
@@ -192,6 +195,7 @@ class FourFpsShell : public QWidget {
     QLabel* m_detailJava = nullptr;
     QWidget* m_detailBody = nullptr;
     QCheckBox* m_pvpToggle = nullptr;
+    QCheckBox* m_sharedCapesToggle = nullptr;
     QLabel* m_pvpHint = nullptr;
     bool m_rebuildQueued = false;
 

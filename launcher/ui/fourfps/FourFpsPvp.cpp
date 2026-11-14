@@ -28,6 +28,8 @@
 namespace {
 const char* kPvpEnabled = "FourFpsPvpClient";
 const char* kPvpFiles = "FourFpsPvpFiles";
+const char* kSharedCapesEnabled = "FourFpsSharedCapes";
+const char* kSharedCapesFiles = "FourFpsSharedCapeFiles";
 
 void ensureSettings(MinecraftInstance* inst)
 {
@@ -246,6 +248,33 @@ QStringList FourFpsShell::pvpFiles(MinecraftInstance* inst)
     return inst->settings()->get(kPvpFiles).toStringList();
 }
 
+bool FourFpsShell::sharedCapesEnabled(MinecraftInstance* inst)
+{
+    if (!inst)
+        return false;
+    auto s = inst->settings();
+    if (!s->contains(kSharedCapesEnabled))
+        s->registerSetting(kSharedCapesEnabled, true);
+    return s->get(kSharedCapesEnabled).toBool();
+}
+
+void FourFpsShell::setSharedCapesEnabled(MinecraftInstance* inst, bool on)
+{
+    if (!inst)
+        return;
+    sharedCapesEnabled(inst);
+    auto s = inst->settings();
+    if (!s->contains(kSharedCapesFiles))
+        s->registerSetting(kSharedCapesFiles, QStringList());
+    s->set(kSharedCapesEnabled, on);
+    if (!on) {
+        // quita solo lo que instaló 4fps (no toca los mods del usuario)
+        for (const auto& f : s->get(kSharedCapesFiles).toStringList())
+            QFile::remove(inst->modsRoot() + "/" + f);
+        s->set(kSharedCapesFiles, QStringList());
+    }
+}
+
 void FourFpsShell::setPvpEnabled(MinecraftInstance* inst, bool on)
 {
     if (!inst)
@@ -300,6 +329,36 @@ void FourFpsShell::launchSelected()
 }
 
 void FourFpsShell::launchAfterCapes(MinecraftInstance* inst)
+{
+    // MinecraftCapes: para ver (y que vean) las capas de otros jugadores de 4fps. Se instala como mod visible.
+    if (pvpSupported(inst) && sharedCapesEnabled(inst)) {
+        auto job = std::make_shared<PvpJob>();
+        job->inst = inst;
+        job->mc = mcVersionOf(inst);
+        job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
+        job->queue = { "minecraftcapes" };  // sus dependencias (si pide Fabric API) se agregan solas
+        job->filesKey = QStringLiteral("FourFpsSharedCapeFiles");
+        job->title = tr("Preparando capas de 4fps...");
+        job->onlyDownloaded = true;  // al apagar el interruptor se quita sin tocar otros mods
+        job->progress = new QProgressDialog(job->title, QString(), 0, 0, this);
+        job->progress->setWindowTitle(QStringLiteral("4fps"));
+        job->progress->setCancelButton(nullptr);
+        job->progress->setMinimumDuration(400);
+        job->progress->setWindowModality(Qt::WindowModal);
+        QPointer<FourFpsShell> self(this);
+        job->done = [self, inst] {
+            if (!self)
+                return;
+            self->m_modsInstance = nullptr;  // fuerza a releer la lista de mods
+            self->launchAfterSharedCapes(inst);
+        };
+        job->next();
+        return;
+    }
+    launchAfterSharedCapes(inst);
+}
+
+void FourFpsShell::launchAfterSharedCapes(MinecraftInstance* inst)
 {
     if (!pvpEnabled(inst)) {
         m_hooks.launch();

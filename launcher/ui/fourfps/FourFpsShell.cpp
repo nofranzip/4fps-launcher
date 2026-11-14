@@ -846,6 +846,16 @@ QWidget* FourFpsShell::buildInstancesPage()
             setPvpEnabled(inst, on);
     });
     bv->addWidget(m_pvpToggle);
+    m_sharedCapesToggle = new QCheckBox(tr("Ver capas de otros jugadores"), m_detailBody);
+    m_sharedCapesToggle->setObjectName(QStringLiteral("fpsToggle"));
+    m_sharedCapesToggle->setToolTip(tip(tr("Ver capas de otros jugadores"),
+                                        tr("Al jugar instala el mod MinecraftCapes para ver las capas de otros jugadores que también usen 4fps (y que las vean de ti). "
+                                           "Aparece en la lista de Mods. Solo en instancias Fabric.")));
+    connect(m_sharedCapesToggle, &QCheckBox::toggled, this, [this](bool on) {
+        if (auto* inst = m_hooks.selected())
+            setSharedCapesEnabled(inst, on);
+    });
+    bv->addWidget(m_sharedCapesToggle);
     m_pvpHint = makeLabel(QString(), QStringLiteral("fpsHint"), m_detailBody);
     m_pvpHint->setWordWrap(true);
     bv->addWidget(m_pvpHint);
@@ -1023,6 +1033,12 @@ void FourFpsShell::updateDetail()
     m_pvpToggle->setChecked(supported && pvpEnabled(sel));
     m_pvpToggle->setEnabled(supported);
     m_pvpToggle->blockSignals(false);
+    if (m_sharedCapesToggle) {
+        m_sharedCapesToggle->blockSignals(true);
+        m_sharedCapesToggle->setChecked(supported && sharedCapesEnabled(sel));
+        m_sharedCapesToggle->setEnabled(supported);
+        m_sharedCapesToggle->blockSignals(false);
+    }
     if (m_slowButton) {
         const bool slow = fps::slowModeActive(sel);
         m_slowButton->setVisible(fps::enabled(fps::cfg::SlowPc));
