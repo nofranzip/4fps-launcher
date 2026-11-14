@@ -174,6 +174,7 @@ class FourFpsShell : public QWidget {
     QWidget* m_pages[10] = {};
     QWidget* header(const QString& title, const QString& subtitle, const QList<QWidget*>& right);
     void updateDetail();
+    void exportInstance();
     void updateBottom();
     void scheduleRebuild();
     void showPage(int i);

@@ -23,6 +23,11 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.4.2
+
+- **Exportar instancia**: volvió la opción de exportar una instancia desde el panel de la instancia (Prism `.zip`, Modrinth `.mrpack` o CurseForge `.zip`), para compartirla o respaldarla.
+- **4fps Client para Minecraft 26.3** además de 26.2 (con el minimapa incluido).
+
 ## Novedades 1.4.1
 
 - **Minimapa en el 4fps Client**: el cliente PvP ahora trae un minimapa (norte arriba) que muestra los mobs y jugadores cercanos que el cliente ya recibe del servidor. No es un radar: no revela jugadores ocultos. Se puede mover/escalar como cualquier módulo y tiene ajustes (mostrar jugadores, mostrar mobs, alcance).

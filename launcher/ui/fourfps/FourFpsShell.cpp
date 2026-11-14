@@ -37,10 +37,15 @@
 #include "icons/IconList.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/PackProfile.h"
+#include "minecraft/VersionFile.h"
+#include "minecraft/Component.h"
 #include "minecraft/auth/AccountList.h"
 #include "minecraft/auth/MinecraftAccount.h"
 #include "ui/dialogs/CustomMessageBox.h"
+#include "ui/dialogs/ExportInstanceDialog.h"
+#include "ui/dialogs/ExportPackDialog.h"
 #include "ui/dialogs/MSALoginDialog.h"
+#include "modplatform/ModIndex.h"
 
 namespace fps {
 QPushButton* makeButton(const QString& text, const QString& icon, bool primary, QWidget* parent)
@@ -887,6 +892,8 @@ QWidget* FourFpsShell::buildInstancesPage()
     row(tr("Grupos de mods"), "tag", [this] { fps::editModGroups(this, m_hooks.selected()); }, tr("Junta mods que deben actualizarse a la vez (ej: Sodium + Iris + Voxy) o bloquéalos para que no se actualicen."));
     row(tr("Abrir carpeta"), "viewfolder", [this] { m_hooks.openFolder(); }, tr("Abre la carpeta de la instancia en el explorador de Windows."));
     row(tr("Duplicar"), "copy", [this] { m_hooks.copyInstance(); }, tr("Crea una copia exacta de la instancia, con sus mods y mundos."));
+    row(tr("Exportar"), "export", [this] { exportInstance(); },
+        tr("Guarda la instancia como archivo para compartirla o respaldarla: .zip de Prism, .mrpack de Modrinth o .zip de CurseForge."));
     row(tr("Eliminar"), "delete", [this] { m_hooks.deleteInstance(); }, tr("Borra la instancia y todos sus archivos. Te pide confirmación."));
     bv->addStretch(1);
     auto* jugar = makeButton(QStringLiteral("▶  ") + tr("Jugar"), QString(), true, m_detailBody);
@@ -988,6 +995,34 @@ void FourFpsShell::selectionChanged()
     updateBottom();
     if (m_stack)
         onPageShown(m_stack->currentIndex());
+}
+
+void FourFpsShell::exportInstance()
+{
+    auto* inst = m_hooks.selected();
+    if (!inst)
+        return;
+    QMenu menu(this);
+    auto* aPrism = menu.addAction(tr("Prism Launcher (.zip)"));
+    auto* aMr = menu.addAction(tr("Modrinth (.mrpack)"));
+    auto* aFlame = menu.addAction(tr("CurseForge (.zip)"));
+    QAction* chosen = menu.exec(QCursor::pos());
+    if (chosen == aPrism) {
+        ExportInstanceDialog dlg(inst, this);
+        dlg.exec();
+    } else if (chosen == aMr) {
+        ExportPackDialog dlg(inst, this);
+        dlg.exec();
+    } else if (chosen == aFlame) {
+        auto* pp = inst->getPackProfile();
+        auto cmp = pp ? pp->getComponent("net.minecraft") : nullptr;
+        if (cmp && cmp->getVersionFile() && cmp->getVersionFile()->type == "snapshot") {
+            QMessageBox::information(this, tr("Exportar"), tr("CurseForge no admite versiones snapshot de Minecraft."));
+            return;
+        }
+        ExportPackDialog dlg(inst, this, ModPlatform::ResourceProvider::FLAME);
+        dlg.exec();
+    }
 }
 
 void FourFpsShell::updateDetail()
