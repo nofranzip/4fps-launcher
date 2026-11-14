@@ -23,6 +23,11 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.4.1
+
+- **Minimapa en el 4fps Client**: el cliente PvP ahora trae un minimapa (norte arriba) que muestra los mobs y jugadores cercanos que el cliente ya recibe del servidor. No es un radar: no revela jugadores ocultos. Se puede mover/escalar como cualquier módulo y tiene ajustes (mostrar jugadores, mostrar mobs, alcance).
+- Al instalar el cliente, el launcher quita cualquier cliente viejo y el OneConfig/PolyHitbox/PolyCrosshair anterior para que no choquen.
+
 ## Novedades 1.4
 
 - **Cliente PvP propio (4fps Client)**: el launcher ahora instala el mod **4fps Client** (editor de HUD con Shift derecho, crosshair, hitboxes y módulos de FPS, CPS, coordenadas, ping y teclas) en vez de OneConfig/PolyHitbox/PolyCrosshair. Instala el jar que corresponde a la versión de Minecraft de cada instancia (por ahora 26.2 Fabric; se irán agregando más). Aparece en la lista de Mods.

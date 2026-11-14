@@ -432,6 +432,12 @@ void FourFpsShell::installClient(MinecraftInstance* inst)
     for (const auto& f : s->get(kPvpFiles).toStringList())
         QFile::remove(inst->modsRoot() + "/" + f);
     s->set(kPvpFiles, QStringList());
+    // quita cualquier jar del 4fps Client que haya quedado suelto (versiones viejas o de otra conversación)
+    // y el antiguo cliente PvP (OneConfig/PolyHitbox/PolyCrosshair), para que nunca convivan dos a la vez.
+    // No toca fabric-api ni fabric-language-kotlin (otros mods del usuario pueden necesitarlos).
+    const QStringList viejos = { "4fps-client*.jar", "OneConfig*.jar", "polyhitbox*.jar", "polycrosshair*.jar" };
+    for (const auto& f : QDir(inst->modsRoot()).entryList(viejos, QDir::Files, QDir::Name))
+        QFile::remove(inst->modsRoot() + "/" + f);
 
     const QString jar = clientJarFor(inst);
     if (jar.isEmpty())
