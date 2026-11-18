@@ -1,0 +1,570 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jareer Abdullah and Concat contributors
+// SPDX-FileCopyrightText: 2026 Nova_323 (FPSedit)
+
+// FPSedit's desk layout: the editor laid out the way a phone editor held
+// sideways is - a rail of verbs down the left, the monitor in the middle,
+// a round hub of things to add on the right, and the timeline across the
+// bottom. When a clip is selected the hub gives way to that clip's
+// settings; the library opens in the same column.
+//
+// It is fixed rather than docked: the panes are the same Seat boxes the
+// docking workspace uses, so every view reads the Editor global exactly as
+// it does there, only their places are decided here.
+
+import { Theme } from "../theme/theme.slint";
+import { Editor } from "../editor.slint";
+import { Glyph, Icon } from "../icons.slint";
+import { I18n } from "../i18n.slint";
+import { Seat } from "seat.slint";
+import { PaneKind } from "pane-switcher.slint";
+import { MediaFilter } from "media-pane.slint";
+import { Keyframes } from "../timeline/model.slint";
+import { FpsKeys } from "../timeline/fps-keys.slint";
+
+/// FPSedit's red, the logo's.
+global Fps {
+    out property <color> red: #f2464b;
+    out property <color> page: Theme.dark ? #111113 : #e9e9ec;
+    out property <color> card: Theme.dark ? #1c1c1f : #ffffff;
+    out property <color> ink: Theme.dark ? #f2f2f4 : #1c1c1f;
+    out property <color> ink-dim: Theme.dark ? #f2f2f455 : #1c1c1f55;
+    out property <color> hover: Theme.dark ? #ffffff14 : #0000000f;
+}
+
+/// One of the rail's verbs: a big glyph, nothing else, the name as its
+/// accessible label.
+component RailButton inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <bool> active;
+    in property <bool> filled;
+    callback clicked();
+
+    width: 56px;
+    height: 52px;
+    border-radius: 14px;
+    background: root.active ? Fps.red.with-alpha(0.22)
+        : touch.has-hover && root.enabled ? Fps.hover : transparent;
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Icon {
+        x: (parent.width - 24px) / 2;
+        y: (parent.height - 24px) / 2;
+        glyph: root.glyph;
+        size: 24px;
+        filled: root.filled;
+        tint: !root.enabled ? Fps.ink-dim : root.active ? Fps.red : Fps.ink;
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// A place on the hub: a glyph over its name.
+component HubButton inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <string> text;
+    in property <bool> light;
+    callback clicked();
+
+    width: 96px;
+    height: 78px;
+    border-radius: 14px;
+    background: touch.has-hover ? (root.light ? #0000000f : #ffffff14) : transparent;
+    accessible-role: button;
+    accessible-label: root.text;
+
+    Icon {
+        x: (parent.width - 30px) / 2;
+        y: 10px;
+        glyph: root.glyph;
+        size: 30px;
+        tint: root.light ? #26262a : #f2f2f4;
+    }
+    Text {
+        x: 0;
+        y: 48px;
+        width: parent.width;
+        horizontal-alignment: center;
+        text: root.text;
+        color: root.light ? #3a3a40 : #e6e6ea;
+        font-size: 14px;
+    }
+
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// The hub: a disc with what can be added round its edge. Its first face
+/// holds the four kinds of thing a cut is made of and, in the middle, the
+/// captions the machine writes; Layer turns it to its second face, the
+/// things that lie over the picture.
+component Hub inherits Rectangle {
+    callback open-library(tab: int);
+
+    property <bool> layers;
+    property <length> d: Math.min(330px, Math.min(root.width, root.height) - 16px);
+    property <length> cx: root.width / 2;
+    property <length> cy: root.height / 2;
+    property <length> ring: root.d / 2 - 52px;
+
+    disc := Rectangle {
+        x: root.cx - root.d / 2;
+        y: root.cy - root.d / 2;
+        width: root.d;
+        height: root.d;
+        border-radius: self.width / 2;
+        background: root.layers ? #efeff1 : #1f1f23;
+        border-width: root.layers ? 0px : 1px;
+        border-color: #ffffff12;
+        animate background { duration: 160ms; }
+    }
+
+    // the first face
+    if !root.layers: HubButton {
+        x: root.cx - self.width / 2;
+        y: root.cy - root.ring - self.height / 2;
+        glyph: Glyph.film;
+        text: I18n.t("fps.hubMedia");
+        clicked => { root.open-library(0); }
+    }
+    if !root.layers: HubButton {
+        x: root.cx - root.ring - self.width / 2;
+        y: root.cy - self.height / 2;
+        glyph: Glyph.rows;
+        text: I18n.t("fps.hubLayer");
+        clicked => { root.layers = true; }
+    }
+    if !root.layers: HubButton {
+        x: root.cx + root.ring - self.width / 2;
+        y: root.cy - self.height / 2;
+        glyph: Glyph.music;
+        text: I18n.t("common.audio");
+        clicked => { root.open-library(8); }
+    }
+    if !root.layers: HubButton {
+        x: root.cx - self.width / 2;
+        y: root.cy + root.ring - self.height / 2;
+        glyph: Glyph.mic;
+        text: I18n.t("fps.hubRecord");
+        clicked => { Editor.record-voiceover(); }
+    }
+    if !root.layers: Rectangle {
+        x: root.cx - self.width / 2;
+        y: root.cy - self.height / 2;
+        width: 104px;
+        height: 104px;
+        border-radius: self.width / 2;
+        background: centre-touch.has-hover ? Fps.red.brighter(0.12) : Fps.red;
+        drop-shadow-blur: 18px;
+        drop-shadow-color: Fps.red.with-alpha(0.45);
+        accessible-role: button;
+        accessible-label: I18n.t("fps.hubAi");
+
+        Icon {
+            x: (parent.width - 34px) / 2;
+            y: 22px;
+            glyph: Glyph.sparkle;
+            size: 34px;
+            tint: #ffffff;
+        }
+        Text {
+            y: 62px;
+            width: parent.width;
+            horizontal-alignment: center;
+            text: I18n.t("fps.hubAi");
+            color: #ffffff;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        centre-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { Editor.captions(); }
+        }
+    }
+
+    // the second face: Layer
+    if root.layers: HubButton {
+        light: true;
+        x: root.cx - root.ring * 0.62 - self.width / 2;
+        y: root.cy - root.ring * 0.8 - self.height / 2;
+        glyph: Glyph.image;
+        text: I18n.t("fps.hubMedia");
+        clicked => { root.open-library(0); }
+    }
+    if root.layers: HubButton {
+        light: true;
+        x: root.cx + root.ring * 0.62 - self.width / 2;
+        y: root.cy - root.ring * 0.8 - self.height / 2;
+        glyph: Glyph.wand;
+        text: I18n.t("fps.hubEffect");
+        clicked => { root.open-library(4); }
+    }
+    if root.layers: HubButton {
+        light: true;
+        x: root.cx - root.ring - self.width / 2;
+        y: root.cy + 6px - self.height / 2;
+        glyph: Glyph.text-mark;
+        text: I18n.t("fps.hubText");
+        clicked => { Editor.library-add-text("default"); }
+    }
+    if root.layers: HubButton {
+        light: true;
+        x: root.cx + root.ring - self.width / 2;
+        y: root.cy + 6px - self.height / 2;
+        glyph: Glyph.sticker;
+        text: I18n.t("mediaPane.stickers");
+        clicked => { root.open-library(2); }
+    }
+    if root.layers: HubButton {
+        light: true;
+        x: root.cx - self.width / 2;
+        y: root.cy + root.ring - self.height / 2;
+        glyph: Glyph.filter;
+        text: I18n.t("mediaPane.filters");
+        clicked => { root.open-library(5); }
+    }
+    if root.layers: Rectangle {
+        x: root.cx - self.width / 2;
+        y: root.cy - self.height / 2;
+        width: 92px;
+        height: 92px;
+        border-radius: self.width / 2;
+        background: back-touch.has-hover ? #2a2a2f : #1c1c1f;
+        accessible-role: button;
+        accessible-label: I18n.t("fps.back");
+
+        Icon {
+            x: (parent.width - 30px) / 2;
+            y: (parent.height - 30px) / 2;
+            glyph: Glyph.reset;
+            size: 30px;
+            tint: #ffffff;
+        }
+        back-touch := TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.layers = false; }
+        }
+    }
+}
+
+/// A round button that floats on the page: Export over the hub, Play
+/// under it.
+component RoundButton inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <string> label;
+    in property <bool> light;
+    callback clicked();
+
+    width: 60px;
+    height: 60px;
+    border-radius: self.width / 2;
+    background: root.light ? (touch.has-hover ? #ffffff : #ececef)
+        : (touch.has-hover ? #2c2c31 : #222226);
+    accessible-role: button;
+    accessible-label: root.label;
+
+    Icon {
+        x: (parent.width - 26px) / 2;
+        y: (parent.height - 26px) / 2;
+        glyph: root.glyph;
+        size: 26px;
+        filled: root.glyph == Glyph.play;
+        tint: root.light ? #1c1c1f : #ffffff;
+    }
+    touch := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+/// The right column's head when it shows something other than the hub:
+/// back to the hub, and for a clip, delete.
+component ColumnHead inherits Rectangle {
+    in property <string> title;
+    in property <bool> can-delete;
+    callback back();
+    callback delete();
+
+    height: 52px;
+    background: Fps.card;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        background: Theme.line;
+    }
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 4px;
+        alignment: stretch;
+
+        RailButton {
+            width: 44px;
+            height: 44px;
+            glyph: Glyph.chevron-left;
+            label: I18n.t("fps.back");
+            clicked => { root.back(); }
+        }
+        Text {
+            horizontal-stretch: 1;
+            text: root.title;
+            color: Fps.ink;
+            font-size: Theme.fs-lg;
+            font-weight: Theme.weight-title;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+        if root.can-delete: RailButton {
+            width: 44px;
+            height: 44px;
+            glyph: Glyph.trash;
+            label: I18n.t("fps.deleteClip");
+            clicked => { root.delete(); }
+        }
+    }
+}
+
+export component FpsWorkspace inherits Rectangle {
+    callback export-clicked();
+    callback open-settings();
+
+    background: Fps.page;
+
+    init => { Editor.workspace-resized(root.width, root.height); }
+    changed width => { Editor.workspace-resized(root.width, root.height); }
+    changed height => { Editor.workspace-resized(root.width, root.height); }
+
+    property <length> gap: 6px;
+    property <length> rail-w: 72px;
+    property <length> right-w: Math.max(320px, Math.min(430px, root.width * 0.27));
+    property <length> top-h: Math.max(260px, root.height * 0.58);
+
+    /// What the right column shows when nothing selected wants it: 0 the
+    /// hub, 1 the library.
+    property <int> column: 0;
+    /// The library page the column opens on, and a nudge to turn to it.
+    property <int> library-tab: 0;
+    property <int> library-token: 0;
+    /// A selected clip shows its settings in the column until its head's
+    /// back arrow is pressed; selecting again brings them back.
+    property <bool> inspector-dismissed;
+    property <int> selection: Editor.selected-count;
+    changed selection => { root.inspector-dismissed = false; }
+    property <bool> show-inspector: Editor.selected-count > 0 && !root.inspector-dismissed;
+
+    function open-library(tab: int) {
+        root.library-tab = tab;
+        root.library-token += 1;
+        if (tab == 8) {
+            Editor.media-filter-changed(MediaFilter.audio);
+        } else if (tab == 0) {
+            Editor.media-filter-changed(MediaFilter.all);
+        }
+        root.column = 1;
+        root.inspector-dismissed = true;
+    }
+
+    // ── the rail ──
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: root.rail-w;
+        height: root.height;
+
+        VerticalLayout {
+            padding-top: 10px;
+            padding-bottom: 10px;
+            spacing: 6px;
+            alignment: start;
+
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.undo;
+                    label: I18n.t1("tray.undo", Editor.keys-undo);
+                    enabled: Editor.can-undo;
+                    clicked => { Editor.undo(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.redo;
+                    label: I18n.t1("tray.redo", Editor.keys-redo);
+                    enabled: Editor.can-redo;
+                    clicked => { Editor.redo(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.keyframe;
+                    label: I18n.t("fps.keyframe");
+                    enabled: Keyframes.available;
+                    active: FpsKeys.here;
+                    filled: FpsKeys.here;
+                    clicked => { FpsKeys.toggle-all(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.split;
+                    label: I18n.t1("tray.splitAtPlayhead", Editor.keys-split);
+                    clicked => { Editor.split(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.trash;
+                    label: I18n.t("fps.deleteClip");
+                    enabled: Editor.selected-count > 0;
+                    clicked => { Editor.delete-selected(); }
+                }
+            }
+            HorizontalLayout {
+                alignment: center;
+                RailButton {
+                    glyph: Glyph.fit;
+                    label: I18n.t("fps.zoomFit");
+                    clicked => { Editor.zoom-to-fit(root.width - root.rail-w); }
+                }
+            }
+        }
+
+        // settings at the foot of the rail
+        RailButton {
+            x: (parent.width - self.width) / 2;
+            y: parent.height - self.height - 12px;
+            glyph: Glyph.settings;
+            label: I18n.t("fps.settings");
+            clicked => { root.open-settings(); }
+        }
+    }
+
+    // ── the monitor ──
+    Seat {
+        x: root.rail-w;
+        y: root.gap;
+        width: root.width - root.rail-w - root.right-w - 2 * root.gap;
+        height: root.top-h - 2 * root.gap;
+        kind: PaneKind.preview;
+        index: 0;
+        border-radius: 14px;
+        clip: true;
+    }
+
+    // ── the right column ──
+    column := Rectangle {
+        x: root.width - root.right-w - root.gap;
+        y: root.gap;
+        width: root.right-w;
+        height: root.top-h - 2 * root.gap;
+
+        if !root.show-inspector && root.column == 0: Rectangle {
+            width: parent.width;
+            height: parent.height;
+
+            Hub {
+                x: 0;
+                y: 58px;
+                width: parent.width;
+                height: parent.height - 58px - 70px;
+                open-library(tab) => { root.open-library(tab); }
+            }
+            RoundButton {
+                x: parent.width - self.width - 4px;
+                y: 0;
+                light: true;
+                glyph: Glyph.export;
+                label: I18n.t("fps.export");
+                clicked => { root.export-clicked(); }
+            }
+            RoundButton {
+                x: parent.width - self.width - 4px;
+                y: parent.height - self.height - 4px;
+                glyph: Editor.playing ? Glyph.pause : Glyph.play;
+                label: Editor.playing ? I18n.t("fps.pause") : I18n.t("fps.play");
+                clicked => { Editor.play-toggled(); }
+            }
+            RoundButton {
+                x: 4px;
+                y: parent.height - self.height - 4px;
+                glyph: Glyph.folder;
+                label: I18n.t("fps.hubMedia");
+                clicked => { root.open-library(0); }
+            }
+        }
+
+        if !root.show-inspector && root.column == 1: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 14px;
+            clip: true;
+            background: Fps.card;
+
+            ColumnHead {
+                y: 0;
+                width: parent.width;
+                title: I18n.t("fps.library");
+                back => { root.column = 0; }
+            }
+            Seat {
+                y: 52px;
+                width: parent.width;
+                height: parent.height - 52px;
+                kind: PaneKind.media;
+                index: 2;
+                library-tab: root.library-tab;
+                library-token: root.library-token;
+            }
+        }
+
+        if root.show-inspector: Rectangle {
+            width: parent.width;
+            height: parent.height;
+            border-radius: 14px;
+            clip: true;
+            background: Fps.card;
+
+            ColumnHead {
+                y: 0;
+                width: parent.width;
+                title: Editor.selected-clip.name != "" ? Editor.selected-clip.name : I18n.t("fps.clip");
+                can-delete: true;
+                back => { root.inspector-dismissed = true; }
+                delete => { Editor.delete-selected(); }
+            }
+            Seat {
+                y: 52px;
+                width: parent.width;
+                height: parent.height - 52px;
+                kind: PaneKind.inspector;
+                index: 3;
+            }
+        }
+    }
+
+    // ── the timeline ──
+    Seat {
+        x: root.rail-w;
+        y: root.top-h;
+        width: root.width - root.rail-w - root.gap;
+        height: root.height - root.top-h - root.gap;
+        kind: PaneKind.timeline;
+        index: 1;
+        border-radius: 14px;
+        clip: true;
+    }
+}

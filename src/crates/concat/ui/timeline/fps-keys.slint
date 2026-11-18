@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Nova_323 (FPSedit)
+
+import { Editor } from "../editor.slint";
+import { ClipField, Keyframes } from "model.slint";
+
+/// The keyframe button: one press puts a key on every property of the
+/// picture that moves it - where it sits, how big it is, how it is turned
+/// and how see-through - at the playhead, and a press on a frame that
+/// already has one takes them all off again. The sound's level comes along
+/// for a clip that is only sound.
+export global FpsKeys {
+    property <bool> any-here;
+
+    public function toggle-all() {
+        if (!Keyframes.available) {
+            return;
+        }
+        FpsKeys.any-here = Keyframes.row(ClipField.scale).here
+            || Keyframes.row(ClipField.offset-x).here
+            || Keyframes.row(ClipField.offset-y).here
+            || Keyframes.row(ClipField.rotation).here
+            || Keyframes.row(ClipField.opacity).here
+            || Keyframes.row(ClipField.volume).here;
+        if (Editor.picture-selected) {
+            if (Keyframes.row(ClipField.scale).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.scale); }
+            if (Keyframes.row(ClipField.offset-x).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.offset-x); }
+            if (Keyframes.row(ClipField.offset-y).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.offset-y); }
+            if (Keyframes.row(ClipField.rotation).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.rotation); }
+            if (Keyframes.row(ClipField.opacity).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.opacity); }
+        } else {
+            if (Keyframes.row(ClipField.volume).here == FpsKeys.any-here) { Keyframes.toggle(ClipField.volume); }
+        }
+    }
+
+    /// A key sits on the selected clip at the playhead: the button shows lit.
+    out property <bool> here: Keyframes.row(ClipField.scale).here
+        || Keyframes.row(ClipField.offset-x).here
+        || Keyframes.row(ClipField.offset-y).here
+        || Keyframes.row(ClipField.rotation).here
+        || Keyframes.row(ClipField.opacity).here
+        || Keyframes.row(ClipField.volume).here;
+}

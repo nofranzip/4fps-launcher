@@ -1,0 +1,415 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// SPDX-FileCopyrightText: 2026 Jareer Abdullah and Concat contributors
+
+import { I18n } from "../i18n.slint";
+import { Theme } from "../theme/theme.slint";
+
+/// One point of a clip's speed curve, as the graph draws it.
+export struct SpeedPointData {
+    /// Where it stands among the clip's points, which Rust is handed back.
+    index: int,
+    /// Across the clip: 0 at its start, 1 at its end.
+    x: float,
+    /// Up the graph, on its scale of doublings: 0 is 1/16x, 0.5 is 1x and
+    /// 1 is 16x.
+    y: float,
+    /// The first or the last point: it moves in speed alone, and stays.
+    end: bool,
+}
+
+/// The Speed tab's word on the selected clip's speed, and the verbs that
+/// change it. Rust publishes the truth after every edit, every change of
+/// selection and every undo; each verb edits the clip as it is previewed,
+/// and the panel's commit lands it as one edit.
+export global SpeedRamp {
+    /// The clip's speed changes over it.
+    in property <bool> has-curve;
+    /// The curve bends smoothly through its points, rather than running in
+    /// straight lines between them.
+    in property <bool> eased: true;
+    /// The preset the curve still is, by its place in `preset-names`; -1 for a
+    /// curve shaped by hand.
+    in property <int> active-preset: -1;
+    /// The presets' names, in their order.
+    in property <[string]> preset-names;
+    /// The fastest the curve goes above 1x; 0 when it never does.
+    in property <float> peak-speed;
+    /// The slowest it goes below 1x; 0 when it never does.
+    in property <float> trough-speed;
+    /// The curve's points, in order across the clip.
+    in property <[SpeedPointData]> points;
+    /// The curve's line as path commands on a unit square, down the way
+    /// the screen's y runs.
+    in property <string> line-path;
+    /// Where the playhead crosses the clip, 0..1; -1 when it is elsewhere.
+    in property <float> playhead-at: -1;
+    /// The controls act: exactly one video or sound clip is selected.
+    in property <bool> usable;
+
+    /// Curve (true): a level curve at the clip's rate, so nothing moves
+    /// until a point does. Constant: the rate the curve averaged.
+    callback toggle-curve(on: bool);
+    /// A preset picked by its place in `preset-names`: its points replace the
+    /// curve's.
+    callback pick-preset(index: int);
+    /// A point moved to `x` across and `y` up the graph, or put down there
+    /// when `index` is -1.
+    callback move-point(index: int, x: float, y: float);
+    /// A point taken off; the ends stay.
+    callback remove-point(index: int);
+    /// Every point smooth (true) or straight.
+    callback set-eased(smooth: bool);
+    /// The Fastest slider (`faster`) or the Slowest, moved to `target`.
+    callback set-limit(faster: bool, target: float);
+
+    /// Which points are chosen, one flag a point, in `points`' order.
+    in property <[bool]> selected;
+    /// A point pressed: with `add` it joins the chosen or leaves them;
+    /// without, it is the one chosen, unless it is chosen already. -1
+    /// chooses none.
+    callback select(index: int, add: bool);
+    /// The points inside a box dragged over the graph, on its scale.
+    callback select-box(x0: float, y0: float, x1: float, y1: float, add: bool);
+    /// Every point chosen, or none.
+    callback select-all(all: bool);
+    /// A drag of the chosen points begins, from the curve as it is now.
+    callback begin-drag();
+    /// The chosen points moved together from where the drag began.
+    callback drag-selected(dx: float, dy: float);
+    /// The chosen points taken off; the ends stay.
+    callback remove-selected();
+}
+
+/// One point of the curve: a ring that drags in time and speed, filled
+/// when chosen. A press chooses it (Shift or the command key adds it to
+/// the chosen, or takes it out), and a drag moves every chosen point with
+/// it. The two ends only drag in speed - the curve always spans the whole
+/// clip - and do not come off.
+component SpeedHandle inherits TouchArea {
+    in property <float> pos-x;
+    in property <float> pos-y;
+    in property <length> plot-width;
+    in property <length> plot-height;
+    /// The first or the last point of the curve.
+    in property <bool> end;
+    in property <bool> chosen;
+
+    callback press-with(add: bool);
+    callback dragged-by(dx: float, dy: float);
+    callback let-go(off: bool);
+    /// Double-clicked: a point between the ends comes off.
+    callback double-removed();
+
+    /// Where the point was when it was pressed: each move is the pointer's
+    /// whole way from there, the point having moved under it meanwhile.
+    property <float> start-x;
+    property <float> start-y;
+    property <bool> extending;
+    property <bool> moving;
+    /// Dragged well outside the graph: let go there, it comes off.
+    property <bool> off;
+
+    x: root.pos-x * root.plot-width - 8px;
+    y: (1 - root.pos-y) * root.plot-height - 8px;
+    width: 16px;
+    height: 16px;
+    // The ends are held at the clip's ends: they move up and down only.
+    mouse-cursor: root.end ? ns-resize : move;
+
+    Rectangle {
+        x: 3px;
+        y: 3px;
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: root.chosen || root.moving ? Theme.accent : Theme.panel;
+        border-width: 2px;
+        border-color: Theme.accent;
+        opacity: root.off ? 0.35 : 1;
+    }
+
+    // Chosen, a halo: seen at a glance among the rings.
+    if root.chosen: Rectangle {
+        width: 16px;
+        height: 16px;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        opacity: 0.5;
+    }
+
+    pointer-event(event) => {
+        if (event.kind == PointerEventKind.down && event.button == PointerEventButton.left) {
+            self.extending = event.modifiers.shift || event.modifiers.control || event.modifiers.meta;
+            self.start-x = root.pos-x;
+            self.start-y = root.pos-y;
+            root.press-with(self.extending);
+        }
+        if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+            if (self.moving) {
+                root.let-go(self.off && event.kind == PointerEventKind.up);
+            }
+            self.moving = false;
+            self.off = false;
+        }
+    }
+    moved => {
+        if (self.pressed && !self.extending) {
+            self.moving = true;
+            let dx = root.pos-x - self.start-x + (self.mouse-x - self.pressed-x) / root.plot-width;
+            let dy = root.pos-y - self.start-y - (self.mouse-y - self.pressed-y) / root.plot-height;
+            let x = self.start-x + dx;
+            let y = self.start-y + dy;
+            // Well outside the graph, the points between the ends are on
+            // their way off.
+            self.off = !root.end && (x < -0.08 || x > 1.08 || y < -0.08 || y > 1.08);
+            root.dragged-by(dx, dy);
+        }
+    }
+    double-clicked => {
+        if (!root.end) {
+            root.double-removed();
+        }
+    }
+}
+
+/// The graph: the curve over the clip with its points live, on a grid of
+/// small squares - a row a half doubling of speed, a column a twentieth
+/// of the clip - with every doubling written up the left, 1x the strongest
+/// line, and the clip's quarters along the foot.
+///
+/// Click the graph to put a point down, drag one to shape the ramp, and
+/// double-click it or drag it off to take it away. Drag across the graph
+/// to choose the points in the box, Shift-click to choose more; a drag of
+/// one moves them all, Delete takes them off, Escape lets them go.
+export component SpeedGraph inherits VerticalLayout {
+    /// The graph takes presses and keys; dimmed when it does not.
+    in property <bool> enabled: SpeedRamp.usable;
+
+    /// A point moved, or put down when `index` is -1: `x` across the clip
+    /// and `y` up the graph.
+    callback point(index: int, x: float, y: float);
+    /// A point taken off.
+    callback remove(index: int);
+    /// The chosen points moved or taken off: one commit, as a point's is.
+    callback changed();
+
+    /// The labels' column.
+    property <length> label-width: 38px;
+    /// Room inside the border around the chart, for an end's ring.
+    property <length> pad: 9px;
+    property <length> plot-width: Math.max(1px, outline.width - 2 * root.pad);
+    /// Sixteen rows of a half doubling and twenty columns, each a square:
+    /// tall enough to shape a ramp by.
+    property <length> plot-height: root.plot-width * 16 / 20;
+    property <length> square: root.plot-height / 16;
+
+    // The box being dragged out, on the chart, in pixels.
+    property <bool> boxing;
+    property <length> box-x0;
+    property <length> box-y0;
+    property <length> box-x1;
+    property <length> box-y1;
+
+    spacing: 4px;
+    opacity: root.enabled ? 1 : 0.45;
+
+    HorizontalLayout {
+        spacing: 6px;
+
+        // Every doubling, beside its line: 1/16x at the foot, 16x at the top.
+        Rectangle {
+            width: root.label-width;
+            for label[i] in ["16x", "8x", "4x", "2x", "1x", "1/2x", "1/4x", "1/8x", "1/16x"]: Text {
+                x: 0;
+                width: parent.width;
+                y: root.pad + i * 2 * root.square - self.height / 2;
+                text: label;
+                color: i == 4 ? Theme.fg : Theme.fg-dim;
+                font-size: Theme.fs-sm;
+                font-family: Theme.font-technical;
+                horizontal-alignment: right;
+            }
+        }
+
+        outline := Rectangle {
+            height: root.plot-height + 2 * root.pad;
+            horizontal-stretch: 1;
+            background: Theme.well;
+            border-width: 1px;
+            border-color: Theme.line;
+            border-radius: Theme.r;
+            clip: true;
+
+            focus-scope := FocusScope {
+                enabled: root.enabled;
+                key-pressed(event) => {
+                    if (event.text == Key.Delete || event.text == Key.Backspace) {
+                        SpeedRamp.remove-selected();
+                        root.changed();
+                        return accept;
+                    }
+                    if (event.text == Key.Escape) {
+                        SpeedRamp.select(-1, false);
+                        return accept;
+                    }
+                    if ((event.modifiers.control || event.modifiers.meta) && (event.text == "a" || event.text == "A")) {
+                        SpeedRamp.select-all(true);
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+
+            chart := Rectangle {
+                x: root.pad;
+                y: root.pad;
+                width: root.plot-width;
+                height: root.plot-height;
+
+                // The squares: a fine line each square, a firmer one each
+                // doubling and each quarter of the clip, and 1x firmest.
+                for row in 17: Rectangle {
+                    y: row * root.square;
+                    width: parent.width;
+                    height: 1px;
+                    background: row == 8 ? Theme.line-strong : Theme.line;
+                    opacity: row == 8 ? 1 : Math.mod(row, 2) == 0 ? 0.75 : 0.3;
+                }
+                for column in 21: Rectangle {
+                    x: column * root.square;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.line;
+                    opacity: Math.mod(column, 5) == 0 ? 0.75 : 0.3;
+                }
+
+                // A press on the graph away from every point: let go where
+                // it was, a point put down; dragged, the box that chooses.
+                TouchArea {
+                    enabled: root.enabled;
+                    mouse-cursor: crosshair;
+                    property <bool> extending;
+                    pointer-event(event) => {
+                        if (event.kind == PointerEventKind.down) {
+                            focus-scope.focus();
+                            self.extending = event.modifiers.shift || event.modifiers.control || event.modifiers.meta;
+                            root.box-x0 = self.mouse-x;
+                            root.box-y0 = self.mouse-y;
+                            root.box-x1 = self.mouse-x;
+                            root.box-y1 = self.mouse-y;
+                        }
+                        if (event.kind == PointerEventKind.up) {
+                            if (root.boxing) {
+                                SpeedRamp.select-box(
+                                    root.box-x0 / chart.width, 1 - root.box-y0 / chart.height,
+                                    root.box-x1 / chart.width, 1 - root.box-y1 / chart.height,
+                                    self.extending);
+                            } else if (self.extending) {
+                                // Shift on nothing keeps the chosen as they are.
+                            } else {
+                                root.point(-1,
+                                    Math.clamp(self.mouse-x / chart.width, 0, 1),
+                                    Math.clamp(1 - self.mouse-y / chart.height, 0, 1));
+                            }
+                            root.boxing = false;
+                        }
+                        if (event.kind == PointerEventKind.cancel) {
+                            root.boxing = false;
+                        }
+                    }
+                    moved => {
+                        if (self.pressed) {
+                            root.box-x1 = Math.clamp(self.mouse-x, 0, chart.width);
+                            root.box-y1 = Math.clamp(self.mouse-y, 0, chart.height);
+                            root.boxing = root.boxing
+                                || Math.abs(self.mouse-x - self.pressed-x) > 4px
+                                || Math.abs(self.mouse-y - self.pressed-y) > 4px;
+                        }
+                    }
+                }
+
+                // Where the playhead crosses the clip.
+                if SpeedRamp.playhead-at >= 0: Rectangle {
+                    x: SpeedRamp.playhead-at * parent.width - 0.5px;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.playhead;
+                }
+
+                // The curve as it plays, bends and all.
+                Path {
+                    x: 0;
+                    y: 0;
+                    width: parent.width;
+                    height: parent.height;
+                    viewbox-width: 1;
+                    viewbox-height: 1;
+                    fit: fill;
+                    commands: SpeedRamp.line-path;
+                    fill: transparent;
+                    stroke: Theme.accent;
+                    stroke-width: 2px;
+                }
+
+                if root.boxing: Rectangle {
+                    x: Math.min(root.box-x0, root.box-x1);
+                    y: Math.min(root.box-y0, root.box-y1);
+                    width: Math.abs(root.box-x1 - root.box-x0);
+                    height: Math.abs(root.box-y1 - root.box-y0);
+                    background: Theme.accent-soft;
+                    border-width: 1px;
+                    border-color: Theme.accent;
+                }
+
+                for point in SpeedRamp.points: SpeedHandle {
+                    pos-x: point.x;
+                    pos-y: point.y;
+                    plot-width: chart.width;
+                    plot-height: chart.height;
+                    end: point.end;
+                    chosen: SpeedRamp.selected[point.index];
+                    enabled: root.enabled;
+                    press-with(add) => {
+                        focus-scope.focus();
+                        SpeedRamp.select(point.index, add);
+                        SpeedRamp.begin-drag();
+                    }
+                    dragged-by(dx, dy) => {
+                        SpeedRamp.drag-selected(dx, dy);
+                        root.changed();
+                    }
+                    let-go(off) => {
+                        if (off) {
+                            SpeedRamp.remove-selected();
+                            root.changed();
+                        }
+                    }
+                    double-removed => {
+                        root.remove(point.index);
+                    }
+                }
+            }
+        }
+    }
+
+    // The clip's quarters under their lines, and what the line across is.
+    Rectangle {
+        height: 14px;
+        for label[i] in ["0%", "25%", "50%", "75%", "100%"]: Text {
+            // The ends' labels inside the graph's edges, the rest centred.
+            x: root.label-width + 6px + root.pad + i * 5 * root.square
+                - (i == 0 ? 0px : i == 4 ? self.width : self.width / 2);
+            text: label;
+            color: Theme.fg-dim;
+            font-size: Theme.fs-sm;
+            font-family: Theme.font-technical;
+        }
+    }
+    Text {
+        text: I18n.t("speedRamp.acrossClip");
+        color: Theme.fg-muted;
+        font-size: Theme.fs-sm;
+        horizontal-alignment: center;
+    }
+}
