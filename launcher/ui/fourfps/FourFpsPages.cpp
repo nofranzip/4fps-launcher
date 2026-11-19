@@ -381,6 +381,9 @@ QWidget* FourFpsShell::buildVersionsPage()
                     inst->settings()->set("MaxMemAlloc", m_pendingRam);
                 }
                 m_hooks.select(inst);
+                // PC de gama baja: deja la instancia optimizada automáticamente
+                if (mi && fps::enabled(fps::cfg::SlowPc) && fps::detectHardware().weak())
+                    autoOptimizeNewInstance(mi);
                 break;
             }
         }
@@ -1322,30 +1325,38 @@ bool loadGameTextures(QString* jarUsed)
     for (const auto& it : itemList())
         wanted.insert("assets/minecraft/textures/item/" + it.first + ".png", "item/" + it.first);
 
+    // Combina las texturas de TODOS los jars (del más nuevo al más viejo): así una textura que
+    // falte en un jar (p. ej. netherita en 1.8.9) se toma de otro que sí la tenga.
     QHash<QString, QImage> found;
-    MMCZip::ArchiveReader reader(jars.first().absoluteFilePath());
-    auto result = reader.parse([&wanted, &found](MMCZip::ArchiveReader::File* file) -> Result<bool> {
-        const QString name = file->filename();
-        auto it = wanted.find(name);
-        if (it != wanted.end()) {
-            auto data = file->readAll();
-            if (data) {
-                QImage img;
-                if (img.loadFromData(data.value())) {
-                    // capas animadas o tiras: primer cuadro cuadrado
-                    if (it.value().startsWith("item/") && img.height() > img.width())
-                        img = img.copy(0, 0, img.width(), img.width());
-                    found.insert(it.value(), img);
+    QString firstJar;
+    for (const auto& jar : jars) {
+        MMCZip::ArchiveReader reader(jar.absoluteFilePath());
+        reader.parse([&wanted, &found](MMCZip::ArchiveReader::File* file) -> Result<bool> {
+            const QString name = file->filename();
+            auto it = wanted.find(name);
+            if (it != wanted.end() && !found.contains(it.value())) {  // no pisa lo ya encontrado (gana el jar más nuevo)
+                auto data = file->readAll();
+                if (data) {
+                    QImage img;
+                    if (img.loadFromData(data.value())) {
+                        if (it.value().startsWith("item/") && img.height() > img.width())
+                            img = img.copy(0, 0, img.width(), img.width());
+                        found.insert(it.value(), img);
+                    }
                 }
             }
-        }
-        return false;
-    });
+            return false;
+        });
+        if (firstJar.isEmpty() && !found.isEmpty())
+            firstJar = jar.fileName();
+        if (found.size() >= wanted.size())
+            break;  // ya están todas
+    }
     if (found.isEmpty())
         return false;
     SkinRenderer::setGameTextures(found);
     if (jarUsed)
-        *jarUsed = jars.first().fileName();
+        *jarUsed = firstJar;
     return true;
 }
 }  // namespace

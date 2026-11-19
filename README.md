@@ -23,6 +23,12 @@ Launcher de Minecraft **4fps**, basado en [Prism Launcher](https://github.com/Pr
 - Modo música: muestra la canción que suena (arriba a la izquierda) y la letra si existe.
 - Todo se activa/desactiva en Ajustes → Funciones 4fps.
 
+## Novedades 1.5.0
+
+- **4fps Client 1.2.0**: nueva interfaz de ajustes tipo "Mod Menu" (cuadrícula con interruptores y engranaje, en gris); en Editar HUD, botón de **ojo** por elemento para ocultar/mostrar, y flechas para ajuste fino. Teclas corregidas para 26.3 (SDL).
+- **PC de gama baja**: al crear una instancia, si el PC va justo, el launcher la deja optimizada automáticamente (baja distancia de render, RAM acorde, mods de optimización + Dynamic FPS que ajusta el render solo). Reversible con el Modo potato.
+- **Render**: la armadura de netherita (y cualquier textura que falte en un jar) ahora se toma combinando todos los jars de Minecraft instalados, así no desaparece.
+
 ## Novedades 1.4.4
 
 - **4fps Client 1.1.2** (26.2 y 26.3): minimapa con **terreno real**, botón de 4fps en el menú de Opciones, el HUD del cliente se oculta con F1, y dos arreglos: el **arrastre** en el editor de HUD ahora mueve los elementos (antes no), y la caja de **vista previa** del crosshair ya no se encima con los botones del minimapa. También se corrigió la tecla Shift derecho en 26.3 (SDL).

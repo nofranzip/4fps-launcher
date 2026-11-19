@@ -546,7 +546,7 @@ void FourFpsShell::useCapeInGame(const QImage& source, const QString& name)
 }
 
 // ---------------------------------------------------------------- Modo potato: mods de rendimiento
-void FourFpsShell::installPotatoMods(MinecraftInstance* inst)
+void FourFpsShell::installPotatoMods(MinecraftInstance* inst, bool quiet)
 {
     if (!inst || !pvpSupported(inst))
         return;
@@ -554,7 +554,8 @@ void FourFpsShell::installPotatoMods(MinecraftInstance* inst)
     job->inst = inst;
     job->mc = mcVersionOf(inst);
     job->loaders = loaderOf(inst) == "Quilt" ? QStringList{ "quilt", "fabric" } : QStringList{ "fabric" };
-    job->queue = { "sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "modernfix", "fabric-api" };
+    // mods de optimización + "dynamic-fps": ajusta solo el renderizado (baja los FPS/el render cuando no hace falta)
+    job->queue = { "sodium", "lithium", "ferrite-core", "entityculling", "immediatelyfast", "modernfix", "dynamic-fps", "fabric-api" };
     job->filesKey = QStringLiteral("FourFpsPotatoFiles");
     job->onlyDownloaded = true;
     job->title = tr("Preparando Modo potato...");
@@ -564,15 +565,32 @@ void FourFpsShell::installPotatoMods(MinecraftInstance* inst)
     job->progress->setMinimumDuration(300);
     job->progress->setWindowModality(Qt::WindowModal);
     QPointer<FourFpsShell> self(this);
-    job->done = [self, job] {
+    job->done = [self, job, quiet] {
         if (!self)
             return;
         self->m_modsInstance = nullptr;
-        if (!job->downloaded.isEmpty())
+        if (!quiet && !job->downloaded.isEmpty())
             QMessageBox::information(self, QObject::tr("Modo potato"),
                                      QObject::tr("Instalé mods de rendimiento:\n\n%1\n\nSe quitan solos al volver al modo normal.").arg(job->downloaded.join('\n')));
     };
     job->next();
+}
+
+// PC de gama baja: al crear una instancia, deja la optimización lista (render bajo + mods + render que se ajusta solo)
+void FourFpsShell::autoOptimizeNewInstance(MinecraftInstance* inst)
+{
+    if (!inst)
+        return;
+    QDir().mkpath(inst->gameRoot());
+    QDir().mkpath(inst->modsRoot());
+    const QString summary = fps::enableSlowMode(inst);  // baja distancia de render, RAM acorde al PC, gráficos rápidos
+    installPotatoMods(inst, true);                       // descarga los mods de optimización (si es Fabric), sin su propio aviso
+    const bool fabric = pvpSupported(inst);
+    QMessageBox::information(this, tr("PC de gama baja: instancia optimizada"),
+                            tr("Detecté que tu PC va justo de potencia, así que dejé esta instancia lista para que corra mejor:\n\n%1%2\n\n"
+                               "Si prefieres volver a lo normal, apaga el \"Modo potato\" en el panel de la instancia.")
+                                .arg(summary, fabric ? tr("\nMods de optimización instalados (Sodium, Lithium y más) + Dynamic FPS, que ajusta el render solo")
+                                                     : tr("\n(Para instalar los mods de optimización, la instancia debe ser Fabric)")));
 }
 
 void FourFpsShell::removePotatoMods(MinecraftInstance* inst)
